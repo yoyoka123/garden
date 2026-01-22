@@ -239,11 +239,6 @@ export class FlowerManager {
         eventBus.emit(Events.FLOWER_GROWTH_COMPLETE, { flower: flowerData });
       }
 
-      // 可采摘状态：呼吸效果
-      if (flowerData.isHarvestable) {
-        const pulse = 0.85 + Math.sin(time * 4) * 0.15;
-        sprite.scale.set(originalScale * pulse, originalScale * 1.5 * pulse, 1);
-      }
     });
   }
 

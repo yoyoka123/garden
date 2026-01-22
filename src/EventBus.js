@@ -110,5 +110,13 @@ export const Events = {
   // 游戏状态事件
   GOLD_CHANGED: 'game:goldChanged',
   STATUS_MESSAGE: 'game:statusMessage',
-  LOADING_CHANGED: 'game:loadingChanged'
+  LOADING_CHANGED: 'game:loadingChanged',
+
+  // Agent 事件
+  AGENT_INPUT: 'agent:input',
+  AGENT_OUTPUT: 'agent:output',
+  AGENT_TOOL_EXECUTED: 'agent:toolExecuted',
+
+  // 实体交互事件
+  ENTITY_INTERACTION: 'entity:interaction'
 };

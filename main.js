@@ -18,37 +18,143 @@ import { getMouseNDC, toScreenPosition } from './src/utils/three-helpers.js';
 import { removeBackgroundFromDataUrl } from './src/utils/image-process.js';
 import { readFileAsDataUrl, getElement } from './src/utils/dom-helpers.js';
 
+// Agent-Skill 架构导入
+import { GardenAgent } from './src/agent/GardenAgent.js';
+import { SkillRegistry } from './src/skills/SkillRegistry.js';
+import { HarvestSkill } from './src/skills/HarvestSkill.js';
+import { EntityRegistry } from './src/entities/EntityRegistry.js';
+import { FlowerDescriptor } from './src/entities/descriptors/FlowerDescriptor.js';
+import { InteractionManager } from './src/interactions/InteractionManager.js';
+import { InputRouter } from './src/interactions/InputRouter.js';
+import { aiClient } from './src/ai/AIClient.js';
+
 // ============================================
-// 花束目录
+// 花束目录（花朵 + 树木）
 // ============================================
 const BOUQUET_CATALOG = {
-  '默认花朵': {
-    images: ['assets/pink_flower.jpg'],
-    agent: {
-      name: '小周',
-      personality: '热情开朗，喜欢音乐，特别是周杰伦的歌',
-      harvestRule: '说出一首周杰伦的歌名',
-      greeting: '嗨！我是小周，一朵热爱音乐的花～你想带我走吗？',
-      harvestSuccess: '太棒了！你真的懂音乐！带我走吧！'
-    }
+  // === 花朵 ===
+  '粉花': {
+    images: ['assets/flowers/flowerpink.png'],
+    agent: { name: '小粉', personality: '温柔可爱', harvestRule: '说一句甜蜜的情话', greeting: '嗨～我是小粉～', harvestSuccess: '好甜蜜呀！' }
   },
-  '紫色小花': {
-    images: ['assets/purpuleflowe.png'],
-    agent: {
-      name: '小紫',
-      personality: '神秘优雅，喜欢诗词和浪漫的事物',
-      harvestRule: '背诵一句古诗词',
-      greeting: '你好呀～我是小紫，一朵喜欢诗意的花～',
-      harvestSuccess: '好美的诗句！我愿意跟你走～'
-    }
+  '紫花': {
+    images: ['assets/flowers/flowerpurple.png'],
+    agent: { name: '小紫', personality: '神秘优雅', harvestRule: '背诵一句古诗词', greeting: '你好呀～我是小紫～', harvestSuccess: '好美的诗句！' }
+  },
+  '红花': {
+    images: ['assets/flowers/red.png'],
+    agent: { name: '小红', personality: '热情似火', harvestRule: '说出你最近完成的一个挑战', greeting: '嘿！我是小红！', harvestSuccess: '太厉害了！' }
+  },
+  '红花2': {
+    images: ['assets/flowers/red1.png'],
+    agent: { name: '红红', personality: '活力四射', harvestRule: '说一个你的目标', greeting: '你好！我是红红！', harvestSuccess: '加油！' }
+  },
+  '红花3': {
+    images: ['assets/flowers/red2.png'],
+    agent: { name: '阿红', personality: '直爽热情', harvestRule: '夸夸我', greeting: '嘿！我是阿红！', harvestSuccess: '谢谢夸奖！' }
+  },
+  '黄花': {
+    images: ['assets/flowers/yellow1.png'],
+    agent: { name: '小黄', personality: '阳光开朗', harvestRule: '讲一个笑话', greeting: '哈喽！我是小黄！', harvestSuccess: '哈哈哈！' }
+  },
+  '黄花2': {
+    images: ['assets/flowers/yellow2.png'],
+    agent: { name: '黄黄', personality: '活泼可爱', harvestRule: '说一个有趣的事', greeting: '你好！我是黄黄！', harvestSuccess: '太有趣了！' }
+  },
+  '蓝花': {
+    images: ['assets/flowers/blue.png'],
+    agent: { name: '小蓝', personality: '安静沉稳', harvestRule: '分享一个人生感悟', greeting: '你好，我是小蓝', harvestSuccess: '说得真好～' }
+  },
+  '秋花': {
+    images: ['assets/flowers/autumn1.png'],
+    agent: { name: '秋秋', personality: '怀旧温暖', harvestRule: '分享一个童年回忆', greeting: '嗨，我是秋秋～', harvestSuccess: '好温暖！' }
+  },
+  '秋花2': {
+    images: ['assets/flowers/autumn2.png'],
+    agent: { name: '秋叶', personality: '成熟稳重', harvestRule: '说一句励志的话', greeting: '你好，我是秋叶', harvestSuccess: '说得好！' }
+  },
+  '紫兰1': {
+    images: ['assets/flowers/purple1.png'],
+    agent: { name: '紫兰', personality: '高贵典雅', harvestRule: '说一个你欣赏的品质', greeting: '你好～我是紫兰', harvestSuccess: '很有品味！' }
+  },
+  '紫兰2': {
+    images: ['assets/flowers/purple2.png'],
+    agent: { name: '紫罗', personality: '浪漫梦幻', harvestRule: '描述一个梦境', greeting: '嗨～我是紫罗', harvestSuccess: '好梦幻！' }
+  },
+  '花朵1': {
+    images: ['assets/flowers/flower1.png'],
+    agent: { name: '花花', personality: '活泼开朗', harvestRule: '说你最喜欢的颜色', greeting: '你好！我是花花！', harvestSuccess: '好选择！' }
+  },
+  '花朵2': {
+    images: ['assets/flowers/flower2.png'],
+    agent: { name: '朵朵', personality: '甜美可人', harvestRule: '说一个你喜欢的食物', greeting: '嗨～我是朵朵', harvestSuccess: '听起来好吃！' }
+  },
+  '花朵3': {
+    images: ['assets/flowers/flower3.png'],
+    agent: { name: '小朵', personality: '天真烂漫', harvestRule: '唱一句歌词', greeting: '你好呀～我是小朵', harvestSuccess: '唱得真好！' }
+  },
+  '花朵4': {
+    images: ['assets/flowers/flower4.png'],
+    agent: { name: '大朵', personality: '大气从容', harvestRule: '说一个你的爱好', greeting: '你好，我是大朵', harvestSuccess: '兴趣广泛！' }
+  },
+  // === 树木 ===
+  '小树': {
+    images: ['assets/trees/tree1.png'],
+    agent: { name: '树树', personality: '稳重可靠', harvestRule: '说出三种树的名字', greeting: '你好，我是树树', harvestSuccess: '很懂树木！' }
+  },
+  '大树': {
+    images: ['assets/trees/tree.png'],
+    agent: { name: '大树', personality: '沉稳有力', harvestRule: '说一个自然现象', greeting: '你好，我是大树', harvestSuccess: '观察入微！' }
+  },
+  '绿树2': {
+    images: ['assets/trees/tree2.png'],
+    agent: { name: '青青', personality: '生机勃勃', harvestRule: '说一种植物', greeting: '嗨！我是青青', harvestSuccess: '知识丰富！' }
+  },
+  '绿树3': {
+    images: ['assets/trees/tree3.png'],
+    agent: { name: '森森', personality: '神秘深邃', harvestRule: '说一个森林动物', greeting: '你好，我是森森', harvestSuccess: '很了解森林！' }
+  },
+  '绿树4': {
+    images: ['assets/trees/tree4.png'],
+    agent: { name: '林林', personality: '温和友善', harvestRule: '说一句关于环保的话', greeting: '你好～我是林林', harvestSuccess: '环保意识强！' }
+  },
+  '绿树5': {
+    images: ['assets/trees/tree5.png'],
+    agent: { name: '木木', personality: '朴实无华', harvestRule: '说一个你珍惜的东西', greeting: '嗨，我是木木', harvestSuccess: '懂得珍惜！' }
+  },
+  '粉树': {
+    images: ['assets/trees/pinktree.png'],
+    agent: { name: '樱樱', personality: '浪漫温柔', harvestRule: '描述你心中的春天', greeting: '你好～我是樱樱', harvestSuccess: '好美的春天！' }
+  },
+  '紫树': {
+    images: ['assets/trees/purpletree.png'],
+    agent: { name: '紫藤', personality: '优雅神秘', harvestRule: '说出一位艺术家', greeting: '你好，我是紫藤', harvestSuccess: '真有品味！' }
   }
 };
 
 // 草皮目录（url + 每格子数量）
 const GRASS_CATALOG = {
-  '短草': { url: 'assets/glass3d.jpg', countPerCell: 1 },
-  '长草': { url: 'assets/longglass3d.jpg', countPerCell: 2 },
-  '草丛': { url: 'assets/glass3d_2.jpg', countPerCell: 1 }
+  '草地1': { url: 'assets/grass/grass.png', countPerCell: 1 },
+  '草地2': { url: 'assets/grass/grass1.png', countPerCell: 1 },
+  '草地3': { url: 'assets/grass/grass2.png', countPerCell: 1 },
+  '草地4': { url: 'assets/grass/grass3.png', countPerCell: 1 },
+  '草地5': { url: 'assets/grass/grass4.png', countPerCell: 1 }
+};
+
+// 装饰物目录
+const DECORATION_CATALOG = {
+  '小猫': 'assets/decorations/cat.png',
+  '小猫2': 'assets/decorations/cat2.png',
+  '小狗': 'assets/decorations/dog2.png',
+  '小狗2': 'assets/decorations/dog5.png',
+  '蝴蝶1': 'assets/decorations/butterfly1.png',
+  '蝴蝶2': 'assets/decorations/butterfly2.png',
+  '蝴蝶画': 'assets/decorations/butterflydraw.png',
+  '粉蝶': 'assets/decorations/butterpink.png',
+  '云朵': 'assets/decorations/cloud.png',
+  '云朵2': 'assets/decorations/cloud1.png',
+  '云朵3': 'assets/decorations/cloud2.png',
+  '云彩画': 'assets/decorations/clouddraw.png'
 };
 
 // ============================================
@@ -59,7 +165,44 @@ const sceneSetup = new SceneSetup(container);
 const grid = new Grid();
 const flowerManager = new FlowerManager(grid, sceneSetup.gardenGroup, BOUQUET_CATALOG);
 const decorationManager = new DecorationManager(sceneSetup.scene);
-const chatUI = new ChatUI(BOUQUET_CATALOG);
+
+// ============================================
+// Agent-Skill 系统初始化
+// ============================================
+const skillRegistry = new SkillRegistry();
+const entityRegistry = new EntityRegistry();
+
+// 注册实体描述器
+const flowerDescriptor = new FlowerDescriptor(BOUQUET_CATALOG);
+entityRegistry.register(flowerDescriptor);
+
+// 创建花园 Agent
+const gardenAgent = new GardenAgent(
+  {
+    name: '花园精灵',
+    personality: '我是这座花园的守护者，热爱每一朵花。我会帮助你了解花园里的一切，也会在你满足条件时允许你采摘花朵。'
+  },
+  skillRegistry,
+  aiClient
+);
+
+// 注册 Skills
+const harvestSkill = new HarvestSkill(flowerManager);
+skillRegistry.register(harvestSkill);
+
+// 创建交互管理器
+const interactionManager = new InteractionManager(entityRegistry, gardenAgent);
+
+// 注册花朵实体解析器
+interactionManager.registerResolver('flower', (target) => {
+  return flowerManager.getFlowerBySprite(target);
+});
+
+// 创建输入路由器
+const inputRouter = new InputRouter(gardenAgent, interactionManager);
+
+// 创建聊天 UI 并连接到 InputRouter
+const chatUI = new ChatUI(BOUQUET_CATALOG, inputRouter);
 
 // Raycaster
 const raycaster = new THREE.Raycaster();
@@ -585,6 +728,49 @@ function setupDecorationUpload() {
 }
 
 // ============================================
+// 装饰物目录 UI
+// ============================================
+function updateDecorationUI() {
+  const list = getElement('decoration-list');
+  const keys = Object.keys(DECORATION_CATALOG);
+
+  if (!list) return;
+
+  if (keys.length === 0) {
+    list.innerHTML = '<div class="empty-list">暂无装饰物</div>';
+  } else {
+    list.innerHTML = keys.map(key => `
+      <div class="bouquet-item decoration-item" data-key="${key}">
+        <img class="bouquet-thumb" src="${DECORATION_CATALOG[key]}" alt="${key}">
+        <div class="bouquet-info">
+          <div class="bouquet-name">${key}</div>
+        </div>
+      </div>
+    `).join('');
+
+    // 点击选择装饰物
+    list.querySelectorAll('.decoration-item').forEach(item => {
+      item.addEventListener('click', async () => {
+        const key = item.dataset.key;
+        const url = DECORATION_CATALOG[key];
+        pendingDecorationImage = url;
+
+        const preview = getElement('decoration-preview');
+        const previewImage = getElement('decoration-preview-image');
+        if (previewImage) previewImage.src = url;
+        if (preview) preview.style.display = 'block';
+
+        // 高亮选中
+        list.querySelectorAll('.decoration-item').forEach(el => el.classList.remove('active'));
+        item.classList.add('active');
+
+        eventBus.emit(Events.STATUS_MESSAGE, { message: `点击场景放置 ${key}` });
+      });
+    });
+  }
+}
+
+// ============================================
 // UI 更新函数
 // ============================================
 function updateBouquetUI() {
@@ -732,6 +918,7 @@ async function init() {
   setupUIControls();
   updateBouquetUI();
   updateGrassUI();
+  updateDecorationUI();
 
   // 启动动画
   animator.start();

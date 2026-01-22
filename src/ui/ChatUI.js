@@ -1,18 +1,31 @@
 /**
  * 聊天界面管理
+ * 适配 Agent-Skill 架构
  */
 
 import { eventBus, Events } from '../EventBus.js';
 import { getElement, toggleClass, setVisible } from '../utils/dom-helpers.js';
-import { chatWithFlower, conversationManager } from '../ai/FlowerAgent.js';
 
 export class ChatUI {
-  constructor(bouquetCatalog) {
+  /**
+   * @param {Object} bouquetCatalog - 花束目录
+   * @param {import('../interactions/InputRouter.js').InputRouter} [inputRouter] - 输入路由器
+   */
+  constructor(bouquetCatalog, inputRouter = null) {
     this.bouquetCatalog = bouquetCatalog;
+    this.inputRouter = inputRouter;
     this.currentChatFlower = null;
 
     this.cacheElements();
     this.bindEvents();
+  }
+
+  /**
+   * 设置输入路由器
+   * @param {import('../interactions/InputRouter.js').InputRouter} inputRouter
+   */
+  setInputRouter(inputRouter) {
+    this.inputRouter = inputRouter;
   }
 
   /**
@@ -74,10 +87,11 @@ export class ChatUI {
   }
 
   /**
-   * 打开聊天界面
+   * 打开聊天界面（通过交互事件）
    * @param {Object} flowerData - 花朵数据
+   * @param {import('../entities/EntityDescriptor.js').EntityDescriptor} [descriptor] - 实体描述
    */
-  open(flowerData) {
+  open(flowerData, descriptor = null) {
     const bouquetData = this.bouquetCatalog[flowerData.bouquetKey];
     if (!bouquetData || !bouquetData.agent) {
       eventBus.emit(Events.STATUS_MESSAGE, { message: '该花朵没有配置对话' });
@@ -85,13 +99,12 @@ export class ChatUI {
     }
 
     const agent = bouquetData.agent;
-    const conversation = conversationManager.getOrCreateConversation(flowerData, agent);
 
     this.currentChatFlower = {
       flowerData,
       bouquetKey: flowerData.bouquetKey,
       agent,
-      conversation
+      descriptor
     };
 
     // 展开侧边栏
@@ -104,7 +117,8 @@ export class ChatUI {
     toggleClass(this.elements.header, 'active', true);
 
     // 设置信息
-    this.elements.name.textContent = `对话对象：${agent.name}`;
+    const name = descriptor?.name || agent.name;
+    this.elements.name.textContent = `对话对象：${name}`;
     this.elements.status.textContent = '想和你聊聊~';
 
     // 设置头像
@@ -117,22 +131,45 @@ export class ChatUI {
     toggleClass(this.elements.empty, 'hidden', true);
     toggleClass(this.elements.content, 'active', true);
 
-    // 渲染消息
+    // 清空之前的消息
     this.elements.messages.innerHTML = '';
 
-    if (conversation.messages.length === 0) {
-      this.addMessage('flower', agent.greeting);
-      conversation.addAssistantMessage(agent.greeting);
-    } else {
-      conversation.messages.forEach(msg => {
-        this.addMessage(msg.role === 'user' ? 'user' : 'flower', msg.content);
-      });
+    // 显示问候语
+    const greeting = descriptor?.customData?.greeting || agent.greeting;
+    if (greeting) {
+      this.addMessage('flower', greeting);
     }
 
     // 聚焦输入框
     this.elements.input.focus();
 
-    eventBus.emit(Events.CHAT_STARTED, { flowerData, agent });
+    eventBus.emit(Events.CHAT_STARTED, { flowerData, agent, descriptor });
+  }
+
+  /**
+   * 通过 Agent 输出打开/更新聊天
+   * @param {import('../agent/GardenAgent.js').AgentOutput} output
+   * @param {Object} flowerData
+   */
+  openWithAgentOutput(output, flowerData) {
+    if (!this.currentChatFlower || this.currentChatFlower.flowerData.id !== flowerData.id) {
+      this.open(flowerData);
+    }
+
+    if (output.text) {
+      this.addMessage('flower', output.text);
+    }
+
+    // 处理工具执行结果
+    if (output.toolExecutions) {
+      for (const execution of output.toolExecutions) {
+        if (execution.toolName === 'harvest' && execution.result.success) {
+          setTimeout(() => {
+            this.handleHarvestSuccess(execution.arguments.reason);
+          }, 500);
+        }
+      }
+    }
   }
 
   /**
@@ -159,6 +196,11 @@ export class ChatUI {
     }
 
     this.currentChatFlower = null;
+
+    // 清除 Agent 的焦点实体
+    if (this.inputRouter) {
+      this.inputRouter.getAgent().clearFocusedEntity();
+    }
   }
 
   /**
@@ -236,21 +278,47 @@ export class ChatUI {
     this.showTyping();
 
     try {
-      const result = await chatWithFlower(
-        this.currentChatFlower.conversation,
-        userMessage
-      );
+      if (this.inputRouter) {
+        // 使用新的 Agent 系统
+        const output = await this.inputRouter.handleTextInput(userMessage);
 
-      this.hideTyping();
+        this.hideTyping();
 
-      if (result.text) {
-        this.addMessage('flower', result.text);
-      }
+        if (output.text) {
+          this.addMessage('flower', output.text);
+        }
 
-      if (result.harvested) {
-        setTimeout(() => {
-          this.handleHarvestSuccess(result.reason);
-        }, 500);
+        // 处理工具执行结果
+        if (output.toolExecutions) {
+          for (const execution of output.toolExecutions) {
+            if (execution.toolName === 'harvest' && execution.result.success) {
+              setTimeout(() => {
+                this.handleHarvestSuccess(execution.arguments.reason);
+              }, 500);
+            }
+          }
+        }
+      } else {
+        // 兼容模式：使用旧的 FlowerAgent
+        const { chatWithFlower, conversationManager } = await import('../ai/FlowerAgent.js');
+        const conversation = conversationManager.getOrCreateConversation(
+          this.currentChatFlower.flowerData,
+          this.currentChatFlower.agent
+        );
+
+        const result = await chatWithFlower(conversation, userMessage);
+
+        this.hideTyping();
+
+        if (result.text) {
+          this.addMessage('flower', result.text);
+        }
+
+        if (result.harvested) {
+          setTimeout(() => {
+            this.handleHarvestSuccess(result.reason);
+          }, 500);
+        }
       }
 
     } catch (error) {
@@ -274,15 +342,8 @@ export class ChatUI {
 
     this.close();
 
-    // 发送采摘成功事件
-    eventBus.emit(Events.CHAT_HARVEST_SUCCESS, {
-      flowerData,
-      agent,
-      reason
-    });
-
-    // 清除对话历史
-    conversationManager.endConversation(flowerData);
+    // 发送采摘成功事件（如果不是通过 HarvestSkill 发送的）
+    // HarvestSkill 已经发送了事件，这里不需要重复发送
   }
 
   /**
@@ -291,5 +352,13 @@ export class ChatUI {
    */
   getCurrentFlower() {
     return this.currentChatFlower?.flowerData || null;
+  }
+
+  /**
+   * 更新花束目录引用
+   * @param {Object} bouquetCatalog
+   */
+  updateBouquetCatalog(bouquetCatalog) {
+    this.bouquetCatalog = bouquetCatalog;
   }
 }
