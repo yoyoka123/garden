@@ -1,0 +1,1427 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D 花园</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #fff;
+      overflow: hidden;
+    }
+
+    #canvas-container {
+      width: 100vw;
+      height: 100vh;
+    }
+
+    /* 左侧设置面板 */
+    #panel {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 280px;
+      height: 100vh;
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-right: 1px solid rgba(255, 255, 255, 0.3);
+      padding: 16px;
+      overflow-y: auto;
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      z-index: 100;
+      box-shadow: 4px 0 24px rgba(0,0,0,0.08);
+    }
+
+    #panel.collapsed {
+      transform: translateX(-260px);
+    }
+
+    #toggle-panel {
+      position: absolute;
+      right: -32px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 32px;
+      height: 64px;
+      background: rgba(255, 255, 255, 0.95);
+      border: 1px solid #e0e0e0;
+      border-left: none;
+      border-radius: 0 8px 8px 0;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      color: #666;
+    }
+
+    #toggle-panel:hover {
+      background: #f5f5f5;
+    }
+
+    .panel-section {
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #eee;
+    }
+
+    .panel-section:last-child {
+      border-bottom: none;
+    }
+
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 12px;
+    }
+
+    .control-group {
+      margin-bottom: 12px;
+    }
+
+    .control-label {
+      display: block;
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 4px;
+    }
+
+    .control-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    input[type="range"] {
+      flex: 1;
+      height: 6px;
+      -webkit-appearance: none;
+      background: #e0e0e0;
+      border-radius: 3px;
+      outline: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      background: #4CAF50;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    .value-display {
+      min-width: 40px;
+      text-align: right;
+      font-size: 12px;
+      color: #666;
+    }
+
+    select {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 13px;
+      background: #fff;
+      cursor: pointer;
+    }
+
+    input[type="number"] {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+
+    .btn:active {
+      transform: translateY(1px);
+      box-shadow: none;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #4CAF50, #45a049);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #45a049, #3d8b40);
+      box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+    }
+
+    .btn-secondary {
+      background: #f5f5f5;
+      color: #333;
+      border: 1px solid #ddd;
+    }
+
+    .btn-secondary:hover {
+      background: #eee;
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .checkbox-group input {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+    }
+
+    .checkbox-group label {
+      font-size: 13px;
+      color: #333;
+      cursor: pointer;
+    }
+
+    /* 花束列表 */
+    #bouquet-list {
+      max-height: 150px;
+      overflow-y: auto;
+      border: 1px solid #eee;
+      border-radius: 4px;
+    }
+
+    .bouquet-item {
+      display: flex;
+      align-items: center;
+      padding: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .bouquet-item:hover {
+      background: #f5f5f5;
+    }
+
+    .bouquet-item.selected {
+      background: #e8f5e9;
+    }
+
+    .bouquet-thumb {
+      width: 32px;
+      height: 32px;
+      border-radius: 4px;
+      background: #f0f0f0;
+      margin-right: 8px;
+      object-fit: contain;
+    }
+
+    .bouquet-name {
+      font-size: 13px;
+      color: #333;
+    }
+
+    .empty-list {
+      padding: 16px;
+      text-align: center;
+      color: #999;
+      font-size: 12px;
+    }
+
+    /* 上传区域 */
+    #upload-area {
+      border: 2px dashed #ddd;
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    #upload-area:hover {
+      border-color: #4CAF50;
+      background: #f9fff9;
+    }
+
+    #upload-area.dragover {
+      border-color: #4CAF50;
+      background: #e8f5e9;
+    }
+
+    #file-input {
+      display: none;
+    }
+
+    .upload-icon {
+      font-size: 32px;
+      margin-bottom: 8px;
+    }
+
+    .upload-text {
+      font-size: 12px;
+      color: #666;
+    }
+
+    /* 上传预览 */
+    #upload-preview {
+      display: none;
+      margin-top: 12px;
+      padding: 12px;
+      background: #f9f9f9;
+      border-radius: 8px;
+    }
+
+    #preview-image {
+      max-width: 100%;
+      max-height: 100px;
+      border-radius: 4px;
+      margin-bottom: 8px;
+    }
+
+    #bouquet-name-input {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+
+    .preview-buttons {
+      display: flex;
+      gap: 8px;
+    }
+
+    .preview-buttons .btn {
+      flex: 1;
+    }
+
+    /* Agent 配置区域 */
+    .agent-config {
+      margin: 12px 0;
+      padding: 12px;
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+    }
+
+    .agent-config .config-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 10px;
+    }
+
+    .agent-config input {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 12px;
+      margin-bottom: 6px;
+      box-sizing: border-box;
+    }
+
+    .agent-config input:last-child {
+      margin-bottom: 0;
+    }
+
+    .agent-config input:focus {
+      border-color: #4CAF50;
+      outline: none;
+    }
+
+    /* 地皮编辑 */
+    .ground-cell-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+      margin-bottom: 12px;
+    }
+
+    .ground-cell-grid-item {
+      aspect-ratio: 1;
+      background: #8B4513;
+      border: 2px solid #654321;
+      border-radius: 4px;
+      cursor: pointer;
+      background-size: cover;
+      background-position: center;
+      position: relative;
+      transition: all 0.2s;
+    }
+
+    .ground-cell-grid-item:hover {
+      border-color: #4CAF50;
+    }
+
+    .ground-cell-grid-item.selected {
+      border-color: #4CAF50;
+      box-shadow: 0 0 8px rgba(76, 175, 80, 0.5);
+    }
+
+    .ground-cell-grid-item .cell-label {
+      position: absolute;
+      bottom: 2px;
+      right: 4px;
+      font-size: 10px;
+      color: white;
+      text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+    }
+
+    #ground-cell-info {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+
+    .ground-texture-list {
+      max-height: 150px;
+      overflow-y: auto;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      margin-bottom: 12px;
+    }
+
+    .ground-texture-item {
+      display: flex;
+      align-items: center;
+      padding: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .ground-texture-item:last-child {
+      border-bottom: none;
+    }
+
+    .ground-texture-item:hover {
+      background: #f5f5f5;
+    }
+
+    .ground-texture-item.selected {
+      background: #e8f5e9;
+    }
+
+    .ground-texture-thumb {
+      width: 32px;
+      height: 32px;
+      border-radius: 4px;
+      background: #8B4513;
+      margin-right: 8px;
+      background-size: cover;
+      background-position: center;
+      flex-shrink: 0;
+    }
+
+    .ground-texture-name {
+      font-size: 13px;
+      color: #333;
+    }
+
+    #ground-upload-area {
+      border: 2px dashed #ddd;
+      border-radius: 8px;
+      padding: 12px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 12px;
+      color: #666;
+    }
+
+    #ground-upload-area:hover {
+      border-color: #4CAF50;
+      background: #f9fff9;
+    }
+
+    #ground-file-input {
+      display: none;
+    }
+
+    /* 天空背景上传 */
+    #sky-upload-area {
+      border: 2px dashed #ddd;
+      border-radius: 8px;
+      padding: 12px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 12px;
+      color: #666;
+    }
+
+    #sky-upload-area:hover {
+      border-color: #4CAF50;
+      background: #f9fff9;
+    }
+
+    #sky-file-input {
+      display: none;
+    }
+
+    /* 装饰物上传 */
+    #decoration-upload-area {
+      border: 2px dashed #ddd;
+      border-radius: 8px;
+      padding: 12px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 12px;
+      color: #666;
+    }
+
+    #decoration-upload-area:hover {
+      border-color: #4CAF50;
+      background: #f9fff9;
+    }
+
+    #decoration-upload-area.active {
+      border-color: #4CAF50;
+      background: #e8f5e9;
+      border-style: solid;
+    }
+
+    #decoration-file-input {
+      display: none;
+    }
+
+    #ground-upload-preview {
+      margin-top: 12px;
+      padding: 12px;
+      background: #f9f9f9;
+      border-radius: 8px;
+    }
+
+    #ground-preview-image {
+      max-width: 100%;
+      max-height: 80px;
+      border-radius: 4px;
+      margin-bottom: 8px;
+    }
+
+    #ground-texture-name {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 13px;
+      margin-bottom: 8px;
+      box-sizing: border-box;
+    }
+
+    .ground-preview-buttons {
+      display: flex;
+      gap: 8px;
+    }
+
+    .ground-preview-buttons .btn {
+      flex: 1;
+    }
+
+    /* 底部状态栏 */
+    #status-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 32px;
+      background: rgba(255, 255, 255, 0.95);
+      border-top: 1px solid #e0e0e0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      font-size: 12px;
+      color: #666;
+      z-index: 100;
+    }
+
+    #loading-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .loading-spinner {
+      width: 12px;
+      height: 12px;
+      border: 2px solid #e0e0e0;
+      border-top-color: #4CAF50;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* 提示信息 */
+    .hint {
+      font-size: 11px;
+      color: #999;
+      margin-top: 4px;
+    }
+
+    /* 种植模式指示器 */
+    #plant-mode-indicator {
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(76, 175, 80, 0.9);
+      color: white;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      display: none;
+      z-index: 100;
+    }
+
+    #plant-mode-indicator.active {
+      display: block;
+    }
+
+    /* 花朵对话气泡 */
+    #speech-bubble {
+      position: fixed;
+      background: white;
+      border: 2px solid #4CAF50;
+      border-radius: 16px;
+      padding: 12px 20px;
+      font-size: 16px;
+      color: #333;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      pointer-events: none;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity 0.3s, transform 0.3s;
+      z-index: 200;
+      white-space: nowrap;
+    }
+
+    #speech-bubble.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    #speech-bubble::after {
+      content: '';
+      position: absolute;
+      bottom: -10px;
+      left: 50%;
+      transform: translateX(-50%);
+      border-width: 10px 10px 0;
+      border-style: solid;
+      border-color: #4CAF50 transparent transparent;
+    }
+
+    #speech-bubble::before {
+      content: '';
+      position: absolute;
+      bottom: -7px;
+      left: 50%;
+      transform: translateX(-50%);
+      border-width: 8px 8px 0;
+      border-style: solid;
+      border-color: white transparent transparent;
+      z-index: 1;
+    }
+
+    /* 金币状态栏 */
+    #gold-display {
+      position: fixed;
+      top: 16px;
+      right: 80px;
+      background: linear-gradient(135deg, #ffd700 0%, #ffb700 100%);
+      color: #5d4200;
+      padding: 10px 20px;
+      border-radius: 25px;
+      font-size: 18px;
+      font-weight: bold;
+      box-shadow: 0 4px 12px rgba(255, 193, 7, 0.4);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      z-index: 150;
+      border: 2px solid #e6a800;
+      transition: right 0.3s ease;
+    }
+
+    /* 聊天展开时金币位置调整 */
+    #gold-display.chat-active {
+      right: 340px;
+    }
+
+    #gold-display .coin-icon {
+      font-size: 22px;
+    }
+
+    #gold-display .coin-value {
+      min-width: 60px;
+      text-align: right;
+    }
+
+    /* 金币增加动画 */
+    #gold-display.animate {
+      animation: goldPulse 0.3s ease;
+    }
+
+    @keyframes goldPulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+      100% { transform: scale(1); }
+    }
+
+    /* 采摘提示飘字 */
+    .harvest-popup {
+      position: fixed;
+      color: #ffd700;
+      font-size: 20px;
+      font-weight: bold;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      pointer-events: none;
+      animation: floatUp 1s ease-out forwards;
+      z-index: 300;
+    }
+
+    @keyframes floatUp {
+      0% {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      100% {
+        opacity: 0;
+        transform: translateY(-50px);
+      }
+    }
+
+    /* 模态对话框样式 */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 500;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal.active {
+      display: flex;
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      width: 90%;
+      max-width: 400px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    }
+
+    .modal-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 8px;
+    }
+
+    .modal-hint {
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+
+    .modal textarea,
+    .modal input[type="text"] {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      margin-bottom: 16px;
+      font-family: inherit;
+    }
+
+    .modal textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
+
+    .modal-buttons {
+      display: flex;
+      gap: 12px;
+    }
+
+    .modal-buttons .btn {
+      flex: 1;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn-secondary {
+      background: #f0f0f0;
+      color: #333;
+    }
+
+    .btn-secondary:hover {
+      background: #e0e0e0;
+    }
+
+    .btn-primary {
+      background: #4CAF50;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #45a049;
+    }
+
+    .btn-primary:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    /* 采摘结果显示 */
+    .harvest-result {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      display: none;
+    }
+
+    .harvest-result.success {
+      display: block;
+      background: #e8f5e9;
+      color: #2e7d32;
+      border: 1px solid #a5d6a7;
+    }
+
+    .harvest-result.fail {
+      display: block;
+      background: #ffebee;
+      color: #c62828;
+      border: 1px solid #ef9a9a;
+    }
+
+    .harvest-result.loading {
+      display: block;
+      background: #e3f2fd;
+      color: #1565c0;
+      border: 1px solid #90caf9;
+    }
+
+    /* 右侧聊天侧边栏样式 */
+    #chat-sidebar {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 320px;
+      height: 100vh;
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      box-shadow: -4px 0 24px rgba(0, 0, 0, 0.08);
+      display: flex;
+      flex-direction: column;
+      z-index: 100;
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* 侧边栏收起状态 */
+    #chat-sidebar.collapsed {
+      transform: translateX(260px);
+    }
+
+    /* 展开/收起按钮 */
+    #toggle-chat {
+      position: absolute;
+      left: -24px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 24px;
+      height: 48px;
+      background: rgba(255, 255, 255, 0.9);
+      border: none;
+      border-radius: 8px 0 0 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      color: #666;
+      box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+      transition: background 0.2s;
+    }
+
+    #toggle-chat:hover {
+      background: #fff;
+    }
+
+    .chat-header {
+      display: flex;
+      align-items: center;
+      padding: 16px;
+      background: linear-gradient(135deg, #4CAF50, #45a049);
+      color: white;
+      min-height: 70px;
+    }
+
+    .chat-header.inactive {
+      background: #9e9e9e;
+    }
+
+    .chat-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: white;
+      margin-right: 12px;
+      background-size: cover;
+      background-position: center;
+      border: 2px solid rgba(255,255,255,0.5);
+      display: none;
+    }
+
+    .chat-header.active .chat-avatar {
+      display: block;
+    }
+
+    .chat-info {
+      flex: 1;
+    }
+
+    .chat-name {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .chat-status {
+      font-size: 12px;
+      opacity: 0.8;
+    }
+
+    .chat-close {
+      width: 28px;
+      height: 28px;
+      border: none;
+      background: rgba(255,255,255,0.2);
+      color: white;
+      border-radius: 50%;
+      font-size: 18px;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .chat-header.active .chat-close {
+      display: flex;
+    }
+
+    .chat-close:hover {
+      background: rgba(255,255,255,0.3);
+    }
+
+    /* 聊天内容区域 - 默认隐藏 */
+    .chat-content {
+      display: none;
+      flex-direction: column;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .chat-content.active {
+      display: flex;
+    }
+
+    /* 无对话时的提示 */
+    .chat-empty {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #999;
+      font-size: 14px;
+      background: #f5f5f5;
+    }
+
+    .chat-empty.hidden {
+      display: none;
+    }
+
+    .chat-messages {
+      flex: 1;
+      padding: 16px;
+      overflow-y: auto;
+      background: #f5f5f5;
+    }
+
+    .chat-message {
+      max-width: 80%;
+      margin-bottom: 12px;
+      animation: messageIn 0.3s ease;
+    }
+
+    @keyframes messageIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .chat-message.flower {
+      margin-right: auto;
+    }
+
+    .chat-message.user {
+      margin-left: auto;
+    }
+
+    .chat-bubble {
+      padding: 10px 14px;
+      border-radius: 16px;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    .chat-message.flower .chat-bubble {
+      background: white;
+      color: #333;
+      border-bottom-left-radius: 4px;
+    }
+
+    .chat-message.user .chat-bubble {
+      background: #4CAF50;
+      color: white;
+      border-bottom-right-radius: 4px;
+    }
+
+    .chat-message.system .chat-bubble {
+      background: #fff3cd;
+      color: #856404;
+      text-align: center;
+      max-width: 100%;
+      margin: 0 auto 12px;
+    }
+
+    .chat-typing {
+      display: flex;
+      gap: 4px;
+      padding: 10px 14px;
+    }
+
+    .chat-typing span {
+      width: 8px;
+      height: 8px;
+      background: #999;
+      border-radius: 50%;
+      animation: typing 1.4s infinite;
+    }
+
+    .chat-typing span:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    .chat-typing span:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+
+    @keyframes typing {
+      0%, 60%, 100% { transform: translateY(0); }
+      30% { transform: translateY(-6px); }
+    }
+
+    .chat-input-area {
+      display: flex;
+      padding: 12px;
+      background: white;
+      border-top: 1px solid #e0e0e0;
+      gap: 8px;
+    }
+
+    .chat-input-area input {
+      flex: 1;
+      padding: 10px 14px;
+      border: 1px solid #ddd;
+      border-radius: 20px;
+      font-size: 14px;
+      outline: none;
+    }
+
+    .chat-input-area input:focus {
+      border-color: #4CAF50;
+    }
+
+    .chat-send {
+      padding: 10px 16px;
+      background: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 20px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .chat-send:hover {
+      background: #45a049;
+    }
+
+    .chat-send:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    /* 采摘成功动画 */
+    .harvest-success-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(76, 175, 80, 0.9);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 600;
+      animation: successFadeIn 0.5s ease;
+    }
+
+    @keyframes successFadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    .success-icon {
+      font-size: 80px;
+      margin-bottom: 20px;
+      animation: successBounce 0.6s ease;
+    }
+
+    @keyframes successBounce {
+      0% { transform: scale(0); }
+      50% { transform: scale(1.2); }
+      100% { transform: scale(1); }
+    }
+
+    .success-text {
+      color: white;
+      font-size: 24px;
+      font-weight: 600;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+
+    .success-reason {
+      color: rgba(255,255,255,0.9);
+      font-size: 16px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <!-- 左侧设置面板 -->
+  <div id="panel">
+    <button id="toggle-panel">◀</button>
+
+    <!-- 花束列表 -->
+    <div class="panel-section">
+      <div class="section-title">花束列表</div>
+      <div id="bouquet-list">
+        <div class="empty-list">暂无花束，请上传图片添加</div>
+      </div>
+    </div>
+
+    <!-- 上传区域 -->
+    <div class="panel-section">
+      <div class="section-title">添加花束</div>
+      <div id="upload-area">
+        <div class="upload-icon">+</div>
+        <div class="upload-text">点击或拖拽上传图片<br>(PNG/JPG, 建议透明背景)</div>
+      </div>
+      <input type="file" id="file-input" accept=".png,.jpg,.jpeg">
+
+      <div id="upload-preview">
+        <img id="preview-image" alt="预览">
+        <input type="text" id="bouquet-name-input" placeholder="请输入花束名称">
+
+        <!-- Agent 配置区域 -->
+        <div class="agent-config">
+          <div class="config-title">花朵人格设置</div>
+          <input type="text" id="agent-name-input" placeholder="花朵名字（如：小周）">
+          <input type="text" id="agent-personality-input" placeholder="人格描述（如：热情开朗，喜欢音乐）">
+          <input type="text" id="agent-rule-input" placeholder="采摘规则（必填，如：说出一首周杰伦的歌名）">
+          <input type="text" id="agent-greeting-input" placeholder="问候语（如：嗨！我是小周～）">
+          <input type="text" id="agent-success-input" placeholder="成功语（如：太棒了！带我走吧！）">
+        </div>
+
+        <div class="preview-buttons">
+          <button class="btn btn-secondary" id="cancel-upload">取消</button>
+          <button class="btn btn-primary" id="confirm-upload">确认添加</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 地皮列表 -->
+    <div class="panel-section">
+      <div class="section-title">地皮列表</div>
+      <div id="ground-texture-list" class="ground-texture-list">
+        <div class="empty-list">暂无地皮素材</div>
+      </div>
+    </div>
+
+    <!-- 添加地皮 -->
+    <div class="panel-section">
+      <div class="section-title">添加地皮</div>
+      <div id="ground-upload-area">
+        <div class="upload-icon">+</div>
+        <div class="upload-text">点击或拖拽上传地皮<br>(PNG/JPG, 正方形)</div>
+      </div>
+      <input type="file" id="ground-file-input" accept=".png,.jpg,.jpeg">
+
+      <div id="ground-upload-preview" style="display: none;">
+        <img id="ground-preview-image" alt="预览">
+        <input type="text" id="ground-texture-name" placeholder="请输入地皮名称">
+        <div class="ground-preview-buttons">
+          <button class="btn btn-secondary" id="ground-cancel-upload">取消</button>
+          <button class="btn btn-primary" id="ground-confirm-upload">确认添加</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 地皮编辑 -->
+    <div class="panel-section">
+      <div class="section-title">地皮编辑</div>
+
+      <!-- 2x3 格子选择网格 -->
+      <div id="ground-cell-grid" class="ground-cell-grid"></div>
+
+      <!-- 选中信息 -->
+      <div id="ground-cell-info">点击格子选中，再点击地皮列表应用</div>
+    </div>
+
+    <!-- 种植控制 -->
+    <div class="panel-section">
+      <div class="section-title">种植模式</div>
+
+      <div class="control-group">
+        <label class="control-label">选择花束</label>
+        <select id="plant-bouquet">
+          <option value="">请先添加花束</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label class="control-label">每簇数量</label>
+        <div class="control-row">
+          <input type="range" id="bouquet-count" min="1" max="20" value="5">
+          <span class="value-display" id="bouquet-count-value">5</span>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label class="control-label">簇半径</label>
+        <div class="control-row">
+          <input type="range" id="cluster-radius" min="0.1" max="2" step="0.1" value="0.5">
+          <span class="value-display" id="cluster-radius-value">0.5</span>
+        </div>
+      </div>
+
+      <div class="hint">按住 Shift + 点击/拖拽 种植花朵</div>
+    </div>
+
+    <!-- 天空背景 -->
+    <div class="panel-section">
+      <div class="section-title">天空背景</div>
+
+      <div class="control-group">
+        <button class="btn btn-secondary" id="reset-sky" style="width: 100%;">恢复默认天空</button>
+      </div>
+
+      <div id="sky-upload-area">
+        <div class="upload-icon">+</div>
+        <div class="upload-text">点击或拖拽上传背景图</div>
+      </div>
+      <input type="file" id="sky-file-input" accept=".png,.jpg,.jpeg">
+
+      <div id="sky-preview" style="display: none; margin-top: 8px;">
+        <img id="sky-preview-image" style="width: 100%; border-radius: 4px;">
+      </div>
+    </div>
+
+    <!-- 装饰物 -->
+    <div class="panel-section">
+      <div class="section-title">装饰物</div>
+      <div class="hint" style="margin-bottom: 8px;">上传后点击场景放置，可拖拽移动、滚轮缩放、右键删除</div>
+
+      <div id="decoration-upload-area">
+        <div class="upload-icon">+</div>
+        <div class="upload-text">点击上传装饰图片</div>
+      </div>
+      <input type="file" id="decoration-file-input" accept=".png,.jpg,.jpeg">
+
+      <div id="decoration-preview" style="display: none; margin-top: 8px;">
+        <img id="decoration-preview-image" style="width: 60px; height: 60px; object-fit: contain; border-radius: 4px; background: #f0f0f0;">
+        <div style="font-size: 12px; color: #666; margin-top: 4px;">点击场景放置装饰物</div>
+      </div>
+    </div>
+
+    <!-- 显示控制 -->
+    <div class="panel-section">
+      <div class="section-title">显示控制</div>
+
+      <div class="control-group">
+        <label class="control-label">整体缩放</label>
+        <div class="control-row">
+          <input type="range" id="garden-scale" min="0.5" max="2" step="0.1" value="1">
+          <span class="value-display" id="garden-scale-value">1.0</span>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label class="control-label">风摇强度</label>
+        <div class="control-row">
+          <input type="range" id="wind-sway" min="0" max="0.3" step="0.01" value="0.1">
+          <span class="value-display" id="wind-sway-value">0.10</span>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label class="control-label">摆动速度</label>
+        <div class="control-row">
+          <input type="range" id="sway-speed" min="0.5" max="3" step="0.1" value="1.5">
+          <span class="value-display" id="sway-speed-value">1.5</span>
+        </div>
+      </div>
+
+      <div class="checkbox-group" style="margin-top: 8px;">
+        <input type="checkbox" id="random-rotation">
+        <label for="random-rotation">花朵随机旋转</label>
+      </div>
+
+      <div class="checkbox-group" style="margin-top: 8px;">
+        <input type="checkbox" id="garden-rotate">
+        <label for="garden-rotate">花园缓慢旋转</label>
+      </div>
+    </div>
+
+    <!-- 操作 -->
+    <div class="panel-section">
+      <button class="btn btn-secondary" id="clear-garden" style="margin-bottom: 8px;">清空花园</button>
+    </div>
+  </div>
+
+  <!-- 金币状态栏 -->
+  <div id="gold-display">
+    <span class="coin-icon">&#127793;</span>
+    <span class="coin-value" id="gold-value">0</span>
+  </div>
+
+  <!-- 种植模式指示器 -->
+  <div id="plant-mode-indicator">
+    按住 Shift 拖拽种植花朵
+  </div>
+
+  <!-- 花朵对话气泡 -->
+  <div id="speech-bubble">你好</div>
+
+  <!-- 底部状态栏 -->
+  <div id="status-bar">
+    <div id="loading-status">
+      <span>就绪</span>
+    </div>
+    <div id="planted-count">已种植: 0 朵</div>
+  </div>
+
+  <!-- Three.js Canvas -->
+  <div id="canvas-container"></div>
+
+  <!-- 种植设定输入对话框 -->
+  <div id="plant-prompt-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-title">设定植物特性</div>
+      <div class="modal-hint">请为这株植物设定一个特性，采摘时需要说出符合特性的话语才能成功采摘。</div>
+      <textarea id="plant-prompt-input" placeholder="例如：我是一朵喜欢听赞美的花，只有真诚地夸奖我才能采摘"></textarea>
+      <div class="modal-buttons">
+        <button class="btn btn-secondary" id="cancel-plant">取消</button>
+        <button class="btn btn-primary" id="confirm-plant">确认种植</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右侧聊天侧边栏 -->
+  <div id="chat-sidebar" class="collapsed">
+    <button id="toggle-chat">◀</button>
+    <div class="chat-header inactive" id="chat-header">
+      <div class="chat-avatar" id="chat-avatar"></div>
+      <div class="chat-info">
+        <div class="chat-name" id="chat-name">无对话对象</div>
+        <div class="chat-status" id="chat-status">点击成熟的花朵开始对话</div>
+      </div>
+      <button class="chat-close" id="chat-close">&times;</button>
+    </div>
+
+    <!-- 无对话时显示 -->
+    <div class="chat-empty" id="chat-empty">
+      <span>🌸 点击花朵开始聊天</span>
+    </div>
+
+    <!-- 有对话时显示 -->
+    <div class="chat-content" id="chat-content">
+      <div class="chat-messages" id="chat-messages">
+        <!-- 消息会动态添加 -->
+      </div>
+      <div class="chat-input-area">
+        <input type="text" id="chat-input" placeholder="输入消息...">
+        <button class="chat-send" id="chat-send">发送</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Import Map -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>
