@@ -20,8 +20,10 @@ import { readFileAsDataUrl, getElement } from './src/utils/dom-helpers.js';
 
 // Agent-Skill 架构导入
 import { GardenAgent } from './src/agent/GardenAgent.js';
+import { GardenStateProvider } from './src/agent/GardenStateProvider.js';
 import { SkillRegistry } from './src/skills/SkillRegistry.js';
 import { HarvestSkill } from './src/skills/HarvestSkill.js';
+import { GardenSkill } from './src/skills/GardenSkill.js';
 import { EntityRegistry } from './src/entities/EntityRegistry.js';
 import { FlowerDescriptor } from './src/entities/descriptors/FlowerDescriptor.js';
 import { InteractionManager } from './src/interactions/InteractionManager.js';
@@ -179,6 +181,11 @@ const entityRegistry = new EntityRegistry();
 const flowerDescriptor = new FlowerDescriptor(BOUQUET_CATALOG);
 entityRegistry.register(flowerDescriptor);
 
+// 创建花园状态提供者
+const stateProvider = new GardenStateProvider(
+  flowerManager, gameState, grid, BOUQUET_CATALOG
+);
+
 // 创建花园 Agent
 const gardenAgent = new GardenAgent(
   {
@@ -186,12 +193,16 @@ const gardenAgent = new GardenAgent(
     personality: '我是这座花园的守护者，热爱每一朵花。我会帮助你了解花园里的一切，也会在你满足条件时允许你采摘花朵。'
   },
   skillRegistry,
-  aiClient
+  aiClient,
+  stateProvider
 );
 
 // 注册 Skills
 const harvestSkill = new HarvestSkill(flowerManager);
 skillRegistry.register(harvestSkill);
+
+const gardenSkill = new GardenSkill(flowerManager, grid, BOUQUET_CATALOG);
+skillRegistry.register(gardenSkill);
 
 // 创建交互管理器
 const interactionManager = new InteractionManager(entityRegistry, gardenAgent);

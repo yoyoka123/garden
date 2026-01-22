@@ -25,6 +25,7 @@ export class AgentPromptBuilder {
   build(context, availableTools) {
     const sections = [
       this.buildIdentitySection(),
+      this.buildGardenStateSection(context),
       this.buildContextSection(context),
       this.buildToolsSection(availableTools),
       this.buildBehaviorSection()
@@ -111,5 +112,56 @@ ${this.config.personality}`;
     const { behavior } = this.prompts;
     const rules = behavior.rules.map((rule, i) => `${i + 1}. ${rule}`).join('\n');
     return `${behavior.title}\n${rules}`;
+  }
+
+  /**
+   * 构建花园全局状态部分
+   * @param {import('./AgentContext.js').AgentContext} context
+   * @returns {string|null}
+   */
+  buildGardenStateSection(context) {
+    if (!context.gardenSnapshot) return null;
+
+    const { gardenState } = this.prompts;
+    if (!gardenState) return null;
+
+    const snapshot = context.gardenSnapshot;
+    const parts = [gardenState.title];
+
+    // 金币
+    parts.push(`${gardenState.goldLabel}: ${snapshot.gold}`);
+
+    // 花朵列表（按格子）
+    if (snapshot.cellMap) {
+      parts.push(`\n${gardenState.flowersTitle}`);
+      for (const [key, flowers] of snapshot.cellMap) {
+        const [col, row] = key.split(',');
+        const cellLabel = `${gardenState.cellPrefix}(${col},${row})`;
+
+        if (flowers.length === 0) {
+          parts.push(`- ${cellLabel}: ${gardenState.emptyCell}`);
+        } else {
+          const flowerDescs = flowers.map(f => {
+            if (f.isHarvestable) {
+              return `${f.name}[${f.id}](${gardenState.harvestable})`;
+            } else {
+              return `${f.name}[${f.id}](${gardenState.growing} ${f.growthPercent}%)`;
+            }
+          });
+          parts.push(`- ${cellLabel}: ${flowerDescs.join(', ')}`);
+        }
+      }
+    }
+
+    // 统计
+    if (snapshot.summary) {
+      const { total, harvestable, growing } = snapshot.summary;
+      parts.push(`\n${gardenState.summaryTemplate
+        .replace('{total}', total)
+        .replace('{harvestable}', harvestable)
+        .replace('{growing}', growing)}`);
+    }
+
+    return parts.join('\n');
   }
 }

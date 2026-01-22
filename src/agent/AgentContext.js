@@ -37,6 +37,9 @@ export class AgentContext {
       gold: 0,
       flowerCount: 0
     };
+
+    /** @type {Object|null} 花园完整快照（包含所有花朵状态） */
+    this.gardenSnapshot = null;
   }
 
   /**
@@ -82,6 +85,24 @@ export class AgentContext {
   }
 
   /**
+   * 添加工具结果消息
+   * @param {string} toolName - 工具名称
+   * @param {Object} result - 工具执行结果
+   */
+  addToolResultMessage(toolName, result) {
+    const resultText = typeof result === 'string'
+      ? result
+      : JSON.stringify(result, null, 2);
+
+    this.messages.push({
+      role: 'tool_result',
+      content: `工具 ${toolName} 执行结果:\n${resultText}`,
+      timestamp: Date.now(),
+      metadata: { toolName, result }
+    });
+  }
+
+  /**
    * 设置焦点实体
    * @param {EntitySnapshot|null} entity
    */
@@ -108,13 +129,24 @@ export class AgentContext {
   }
 
   /**
+   * 更新花园完整快照
+   * @param {Object} snapshot - 包含 cellMap, summary, gold
+   */
+  updateGardenSnapshot(snapshot) {
+    this.gardenSnapshot = snapshot;
+  }
+
+  /**
    * 导出为 API 格式的消息
    * @returns {Object[]}
    */
   toAPIMessages() {
     return this.messages.map(msg => {
-      // interaction 消息作为 user 消息发送给 API
-      const role = msg.role === 'interaction' ? 'user' : msg.role;
+      // interaction 和 tool_result 消息作为 user 消息发送给 API
+      let role = msg.role;
+      if (role === 'interaction' || role === 'tool_result') {
+        role = 'user';
+      }
       return {
         role,
         content: [{ type: 'input_text', text: msg.content }]

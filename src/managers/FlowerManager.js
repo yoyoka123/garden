@@ -204,6 +204,28 @@ export class FlowerManager {
   }
 
   /**
+   * 按ID采摘单朵花
+   * @param {string} flowerId - 花朵ID
+   * @returns {{flower: Object|null, gold: number}}
+   */
+  harvestFlowerById(flowerId) {
+    const flower = this.getFlowerById(flowerId);
+    if (!flower || !flower.isHarvestable) {
+      return { flower: null, gold: 0 };
+    }
+
+    this.removeFlower(flower);
+    const gold = CONFIG.game.harvestGold;
+
+    eventBus.emit(Events.FLOWER_HARVESTED, {
+      flowers: [flower],
+      gold
+    });
+
+    return { flower, gold };
+  }
+
+  /**
    * 更新花朵动画
    * @param {number} time - 当前时间
    * @param {number} windSway - 摇摆幅度

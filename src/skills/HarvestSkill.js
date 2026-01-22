@@ -32,15 +32,16 @@ export class HarvestSkill extends BaseSkill {
    * 获取可用工具
    */
   getTools(context) {
-    const tools = [];
-
-    // 只有聚焦在可采摘花朵时才提供 harvest 工具
+    // 只要花园有可采摘的花就提供 harvest 工具
+    if (context.gardenSnapshot?.summary?.harvestable > 0) {
+      return [this.config.tool];
+    }
+    // 或者焦点花朵可采摘
     if (context.focusedEntity?.type === 'flower' &&
         context.focusedEntity?.state?.isHarvestable) {
-      tools.push(this.config.tool);
+      return [this.config.tool];
     }
-
-    return tools;
+    return [];
   }
 
   /**
@@ -57,31 +58,44 @@ export class HarvestSkill extends BaseSkill {
       };
     }
 
-    const entity = context.focusedEntity;
-    if (!entity || entity.type !== 'flower') {
-      return { success: false, message: messages.errors.noFlowerSelected };
+    let targetFlower;
+    const flowerId = args.flowerId;
+
+    if (flowerId) {
+      // 通过ID指定采摘
+      targetFlower = this.flowerManager.getFlowerById(flowerId);
+      if (!targetFlower) {
+        return { success: false, message: '找不到指定的花朵' };
+      }
+    } else {
+      // 采摘当前焦点花朵
+      const entity = context.focusedEntity;
+      if (!entity || entity.type !== 'flower') {
+        return { success: false, message: messages.errors.noFlowerSelected };
+      }
+      targetFlower = entity.state;
     }
 
-    if (!entity.state?.isHarvestable) {
+    if (!targetFlower?.isHarvestable) {
       return { success: false, message: messages.errors.flowerNotMature };
     }
 
-    // 获取花朵位置信息
-    const { cellCol, cellRow } = entity.state;
-
-    // 调用 FlowerManager 进行采摘
+    // 采摘单朵花
     let result;
     try {
-      result = this.flowerManager.harvestCell(cellCol, cellRow);
+      result = this.flowerManager.harvestFlowerById(targetFlower.id);
     } catch (error) {
       console.error('采摘失败:', error);
       return { success: false, message: messages.errors.harvestFailed };
     }
 
+    if (!result.flower) {
+      return { success: false, message: messages.errors.harvestFailed };
+    }
+
     // 发送采摘成功事件
     eventBus.emit(Events.CHAT_HARVEST_SUCCESS, {
-      flowerData: entity.state,
-      agent: { name: entity.name },
+      flowerData: result.flower,
       reason: args.reason
     });
 
@@ -89,7 +103,7 @@ export class HarvestSkill extends BaseSkill {
       success: true,
       message: messages.success.harvested.replace('{gold}', result.gold),
       gold: result.gold,
-      flowers: result.flowers?.length || 1
+      flowers: 1
     };
   }
 }

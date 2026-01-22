@@ -40,11 +40,13 @@ export class GardenAgent {
    * @param {AgentConfig} config - Agent 配置
    * @param {import('../skills/SkillRegistry.js').SkillRegistry} skillRegistry - Skill 注册中心
    * @param {import('../ai/AIClient.js').AIClient} aiClient - AI 客户端
+   * @param {import('./GardenStateProvider.js').GardenStateProvider} [stateProvider] - 状态提供者
    */
-  constructor(config, skillRegistry, aiClient) {
+  constructor(config, skillRegistry, aiClient, stateProvider = null) {
     this.config = config;
     this.skillRegistry = skillRegistry;
     this.aiClient = aiClient;
+    this.stateProvider = stateProvider;
     this.context = new AgentContext();
     this.promptBuilder = new AgentPromptBuilder(config);
   }
@@ -55,6 +57,12 @@ export class GardenAgent {
    * @returns {Promise<AgentOutput>}
    */
   async process(input) {
+    // 0. 每次对话前更新花园全局状态
+    if (this.stateProvider) {
+      const snapshot = this.stateProvider.getFlowersByCell();
+      this.context.updateGardenSnapshot(snapshot);
+    }
+
     // 1. 更新上下文
     if (input.type === 'text') {
       this.context.addUserMessage(input.content);
@@ -82,7 +90,7 @@ export class GardenAgent {
     // 3. 构建系统提示
     const systemPrompt = this.promptBuilder.build(this.context, availableTools);
 
-    // 4. 调用 AI
+    // 4. 调用 AI（支持工具调用循环）
     try {
       const response = await this.aiClient.chat(
         this.context.toAPIMessages(),
@@ -107,21 +115,40 @@ export class GardenAgent {
           arguments: call.arguments,
           result: result.result
         });
+
+        // 将工具结果添加到上下文，供后续对话使用
+        this.context.addToolResultMessage(call.name, result.result);
       }
 
       // 7. 生成最终文本
       let responseText = text;
 
-      // 如果有采摘成功，添加成功消息
-      const harvestExecution = toolExecutions.find(e => e.toolName === 'harvest');
-      if (harvestExecution && harvestExecution.result.success) {
-        const customData = this.context.focusedEntity?.customData;
-        if (!responseText && customData?.harvestSuccess) {
-          responseText = customData.harvestSuccess;
+      // 如果有工具调用但没有文本回复，再次调用 AI 生成回复
+      if (toolExecutions.length > 0 && !responseText) {
+        // 重新获取可用工具（工具执行后状态可能变化）
+        const updatedTools = this.skillRegistry.getAvailableTools(this.context);
+        const updatedPrompt = this.promptBuilder.build(this.context, updatedTools);
+
+        // 再次调用 AI，让它根据工具结果生成回复
+        const followUpResponse = await this.aiClient.chat(
+          this.context.toAPIMessages(),
+          updatedPrompt,
+          [] // 不提供工具，只需要文本回复
+        );
+
+        const { text: followUpText } = this.aiClient.parseResponse(followUpResponse);
+        responseText = followUpText;
+      }
+
+      // 8. 如果还是没有回复，使用工具结果的 message 作为回复
+      if (!responseText && toolExecutions.length > 0) {
+        const successExecution = toolExecutions.find(e => e.result?.success && e.result?.message);
+        if (successExecution) {
+          responseText = successExecution.result.message;
         }
       }
 
-      // 8. 保存助手回复
+      // 9. 保存助手回复
       if (responseText) {
         this.context.addAssistantMessage(responseText);
       }

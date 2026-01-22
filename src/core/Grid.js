@@ -91,6 +91,22 @@ export class Grid {
   }
 
   /**
+   * 查找第一个空格子
+   * @returns {Cell|null}
+   */
+  findEmptyCell() {
+    for (let row = 0; row < this.rows; row++) {
+      for (let col = 0; col < this.cols; col++) {
+        const cell = this.getCell(col, row);
+        if (cell && cell.isEmpty()) {
+          return cell;
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
    * 获取所有已种植的格子
    * @returns {Cell[]}
    */
