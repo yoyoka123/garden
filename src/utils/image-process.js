@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 
 /**
- * 处理图片数据，移除灰色/白色背景
+ * 处理图片数据，移除灰色/白色/黑色背景
  * @param {Uint8ClampedArray} data - ImageData 的 data 数组
  */
 export function processImageData(data) {
@@ -27,7 +27,10 @@ export function processImageData(data) {
                         g >= 155 && g <= 255 &&
                         b >= 155 && b <= 255;
 
-    if (isGrayish && inGrayRange) {
+    // 黑色/深色背景特征
+    const inBlackRange = r <= 50 && g <= 50 && b <= 50;
+
+    if ((isGrayish && inGrayRange) || inBlackRange) {
       data[i + 3] = 0; // 设置 alpha 为 0（透明）
     }
   }

@@ -7,6 +7,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CONFIG, GARDEN_WIDTH, GARDEN_DEPTH, GROUND_Y } from '../config.js';
 import { createGradientSkyTexture, createDashedMaterial } from '../utils/three-helpers.js';
 import { resources } from '../core/Resources.js';
+import { GrassManager } from './GrassManager.js';
 
 export class SceneSetup {
   constructor(container) {
@@ -42,9 +43,12 @@ export class SceneSetup {
     this.gardenGroup = new THREE.Group();
     this.scene.add(this.gardenGroup);
 
-    // 创建地面
+    // 创建地面（用于射线检测，不可见）
     this.groundPlane = this.createGround();
     this.dashedGrid = this.createDashedGrid();
+
+    // 草地管理器
+    this.grassManager = new GrassManager(this.scene);
   }
 
   /**
@@ -134,15 +138,19 @@ export class SceneSetup {
   }
 
   /**
-   * 创建地面
+   * 创建地面（用于射线检测，不可见）
    */
   createGround() {
     const geometry = new THREE.PlaneGeometry(GARDEN_WIDTH, GARDEN_DEPTH);
-    const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x8B6914,
+      transparent: true,
+      opacity: 0.3  // 半透明土地底色
+    });
 
     const plane = new THREE.Mesh(geometry, material);
     plane.rotation.x = -Math.PI / 2;
-    plane.position.y = GROUND_Y;
+    plane.position.y = GROUND_Y - 0.02;  // 稍低于草地
 
     this.groundGroup.add(plane);
     return plane;
@@ -204,20 +212,29 @@ export class SceneSetup {
   }
 
   /**
-   * 设置地面纹理
+   * 重新加载草地
+   * @param {Array<{url: string, count: number}>} grassTypes - 草类型数组
+   * @param {Object} grid - 网格对象
+   */
+  async reloadGrass(grassTypes, grid) {
+    await this.grassManager.initFromCatalog(grassTypes, grid);
+  }
+
+  /**
+   * 更新草地动画
+   * @param {number} time - 当前时间
+   */
+  updateGrassAnimation(time) {
+    this.grassManager.updateAnimation(time);
+  }
+
+  /**
+   * 设置地面纹理（已废弃，改用 3D 草地）
    * @param {THREE.Texture|null} texture - 纹理
    */
   setGroundTexture(texture) {
-    if (texture) {
-      texture.wrapS = THREE.ClampToEdgeWrapping;
-      texture.wrapT = THREE.ClampToEdgeWrapping;
-      this.groundPlane.material.map = texture;
-      this.groundPlane.material.color.setHex(0xffffff);
-    } else {
-      this.groundPlane.material.map = null;
-      this.groundPlane.material.color.setHex(0x8B4513);
-    }
-    this.groundPlane.material.needsUpdate = true;
+    // 不再使用平铺纹理，保留接口兼容性
+    // 地面现在是半透明的土地底色
   }
 
   /**

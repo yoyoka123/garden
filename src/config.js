@@ -8,8 +8,8 @@ export const CONFIG = {
   grid: {
     cols: 3,
     rows: 2,
-    cellWidth: 2,
-    cellDepth: 2
+    cellWidth: 0.6,   // 缩小到约 1/10 面积
+    cellDepth: 0.6
   },
 
   // 游戏配置
@@ -60,7 +60,21 @@ export const CONFIG = {
   assets: {
     sky: 'assets/pink_sky.jpg',
     ground: 'assets/glassnew.jpg',
+    grass: 'assets/glass3d.jpg',
+    grassLong: 'assets/longglass3d.jpg',  // 长草
+    grass2: 'assets/glass3d_2.jpg',       // 第二种草
     flower: 'assets/pink_flower.jpg'
+  },
+
+  // 草地配置
+  grass: {
+    shortGrassPerCell: 1,   // 每格子短草数量
+    longGrassPerCell: 2,    // 每格子长草数量
+    grass2PerCell: 1,       // 每格子第二种草数量
+    minScale: 0.12,         // 缩小以适应更小格子
+    maxScale: 0.25,
+    windSway: 0.06,
+    swaySpeed: 1.8
   }
 };
 

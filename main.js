@@ -7,7 +7,6 @@ import * as THREE from 'three';
 import { CONFIG } from './src/config.js';
 import { eventBus, Events } from './src/EventBus.js';
 import { Grid } from './src/core/Grid.js';
-import { resources } from './src/core/Resources.js';
 import { SceneSetup } from './src/rendering/SceneSetup.js';
 import { animator } from './src/rendering/Animator.js';
 import { FlowerManager } from './src/managers/FlowerManager.js';
@@ -32,13 +31,24 @@ const BOUQUET_CATALOG = {
       greeting: '嗨！我是小周，一朵热爱音乐的花～你想带我走吗？',
       harvestSuccess: '太棒了！你真的懂音乐！带我走吧！'
     }
+  },
+  '紫色小花': {
+    images: ['assets/purpuleflowe.png'],
+    agent: {
+      name: '小紫',
+      personality: '神秘优雅，喜欢诗词和浪漫的事物',
+      harvestRule: '背诵一句古诗词',
+      greeting: '你好呀～我是小紫，一朵喜欢诗意的花～',
+      harvestSuccess: '好美的诗句！我愿意跟你走～'
+    }
   }
 };
 
-// 地皮纹理目录
-const GROUND_TEXTURE_CATALOG = {
-  '默认棕色': null,
-  '草地': 'assets/glassnew.jpg'
+// 草皮目录（url + 每格子数量）
+const GRASS_CATALOG = {
+  '短草': { url: 'assets/glass3d.jpg', countPerCell: 1 },
+  '长草': { url: 'assets/longglass3d.jpg', countPerCell: 2 },
+  '草丛': { url: 'assets/glass3d_2.jpg', countPerCell: 1 }
 };
 
 // ============================================
@@ -328,8 +338,8 @@ function setupUIControls() {
   // 花束上传
   setupBouquetUpload();
 
-  // 地皮上传
-  setupGroundUpload();
+  // 草皮上传
+  setupGrassUpload();
 
   // 天空上传
   setupSkyUpload();
@@ -425,16 +435,17 @@ function setupBouquetUpload() {
 }
 
 // ============================================
-// 地皮上传
+// 草皮上传
 // ============================================
-function setupGroundUpload() {
-  const uploadArea = getElement('ground-upload-area');
-  const fileInput = getElement('ground-file-input');
-  const preview = getElement('ground-upload-preview');
-  const previewImage = getElement('ground-preview-image');
-  const nameInput = getElement('ground-texture-name');
-  const confirmBtn = getElement('ground-confirm-upload');
-  const cancelBtn = getElement('ground-cancel-upload');
+function setupGrassUpload() {
+  const uploadArea = getElement('grass-upload-area');
+  const fileInput = getElement('grass-file-input');
+  const preview = getElement('grass-upload-preview');
+  const previewImage = getElement('grass-preview-image');
+  const nameInput = getElement('grass-name-input');
+  const countInput = getElement('grass-count-input');
+  const confirmBtn = getElement('grass-confirm-upload');
+  const cancelBtn = getElement('grass-cancel-upload');
 
   let pendingData = null;
 
@@ -453,6 +464,7 @@ function setupGroundUpload() {
         nameInput.value = '';
         nameInput.focus();
       }
+      if (countInput) countInput.value = '1';
     });
   }
 
@@ -467,23 +479,35 @@ function setupGroundUpload() {
     confirmBtn.addEventListener('click', async () => {
       const name = nameInput?.value.trim();
       if (!name) {
-        alert('请输入纹理名称');
+        alert('请输入草皮名称');
         return;
       }
 
-      GROUND_TEXTURE_CATALOG[name] = pendingData;
-      updateGroundTextureUI();
+      const count = parseInt(countInput?.value) || 1;
+      GRASS_CATALOG[name] = { url: pendingData, countPerCell: count };
+      updateGrassUI();
 
-      // 应用纹理
-      const texture = await resources.loadTexture(pendingData);
-      sceneSetup.setGroundTexture(texture);
+      // 重新加载草地
+      await reloadGrass();
 
       if (preview) preview.style.display = 'none';
       pendingData = null;
 
-      eventBus.emit(Events.STATUS_MESSAGE, { message: `地皮纹理 "${name}" 添加成功！` });
+      eventBus.emit(Events.STATUS_MESSAGE, { message: `草皮 "${name}" 添加成功！` });
     });
   }
+}
+
+/**
+ * 重新加载草地
+ */
+async function reloadGrass() {
+  // 从 GRASS_CATALOG 构建草纹理数组
+  const grassTextures = Object.values(GRASS_CATALOG).map(g => ({
+    url: g.url,
+    count: g.countPerCell
+  }));
+  await sceneSetup.reloadGrass(grassTextures, grid);
 }
 
 // ============================================
@@ -608,45 +632,60 @@ function updateBouquetUI() {
   }
 }
 
-function updateGroundTextureUI() {
-  const list = getElement('ground-texture-list');
-  const keys = Object.keys(GROUND_TEXTURE_CATALOG);
+function updateGrassUI() {
+  const list = getElement('grass-list');
+  const keys = Object.keys(GRASS_CATALOG);
 
   if (!list) return;
 
   if (keys.length === 0) {
-    list.innerHTML = '<div class="empty-list">暂无地皮素材</div>';
+    list.innerHTML = '<div class="empty-list">暂无草皮素材</div>';
     return;
   }
 
   list.innerHTML = '';
   keys.forEach(key => {
-    const url = GROUND_TEXTURE_CATALOG[key];
+    const grass = GRASS_CATALOG[key];
     const item = document.createElement('div');
     item.className = 'ground-texture-item';
     item.dataset.key = key;
 
     const thumb = document.createElement('div');
     thumb.className = 'ground-texture-thumb';
-    if (url) thumb.style.backgroundImage = `url(${url})`;
+    if (grass.url) thumb.style.backgroundImage = `url(${grass.url})`;
     item.appendChild(thumb);
 
     const name = document.createElement('span');
     name.className = 'ground-texture-name';
     name.textContent = key;
+    name.style.flex = '1';
     item.appendChild(name);
 
-    item.addEventListener('click', async () => {
-      list.querySelectorAll('.ground-texture-item').forEach(i => i.classList.remove('selected'));
-      item.classList.add('selected');
+    // 数量控制
+    const countWrapper = document.createElement('div');
+    countWrapper.style.cssText = 'display: flex; align-items: center; gap: 4px;';
 
-      if (url) {
-        const texture = await resources.loadTexture(url);
-        sceneSetup.setGroundTexture(texture);
-      } else {
-        sceneSetup.setGroundTexture(null);
-      }
+    const countInput = document.createElement('input');
+    countInput.type = 'number';
+    countInput.min = '0';
+    countInput.max = '10';
+    countInput.value = grass.countPerCell;
+    countInput.style.cssText = 'width: 40px; padding: 2px 4px; font-size: 12px; border: 1px solid #ddd; border-radius: 4px;';
+    countInput.addEventListener('change', async (e) => {
+      e.stopPropagation();
+      const newCount = parseInt(countInput.value) || 0;
+      GRASS_CATALOG[key].countPerCell = newCount;
+      await reloadGrass();
     });
+    countInput.addEventListener('click', (e) => e.stopPropagation());
+
+    const countLabel = document.createElement('span');
+    countLabel.textContent = '/格';
+    countLabel.style.cssText = 'font-size: 11px; color: #999;';
+
+    countWrapper.appendChild(countInput);
+    countWrapper.appendChild(countLabel);
+    item.appendChild(countWrapper);
 
     list.appendChild(item);
   });
@@ -658,6 +697,9 @@ function updateGroundTextureUI() {
 animator.add((time) => {
   // 花朵动画
   flowerManager.updateAnimation(time, gameState.windSway, gameState.swaySpeed);
+
+  // 草地动画
+  sceneSetup.updateGrassAnimation(time);
 
   // 花园缩放
   sceneSetup.setGardenScale(gameState.gardenScale);
@@ -683,14 +725,13 @@ async function init() {
   // 加载默认天空
   await sceneSetup.loadSkyBackground(CONFIG.assets.sky);
 
-  // 加载默认地皮纹理
-  const groundTexture = await resources.loadTexture(CONFIG.assets.ground);
-  sceneSetup.setGroundTexture(groundTexture);
+  // 初始化 3D 草地（从 GRASS_CATALOG 加载）
+  await reloadGrass();
 
   // 初始化 UI
   setupUIControls();
   updateBouquetUI();
-  updateGroundTextureUI();
+  updateGrassUI();
 
   // 启动动画
   animator.start();

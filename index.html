@@ -1196,42 +1196,36 @@
       </div>
     </div>
 
-    <!-- 地皮列表 -->
+    <!-- 草皮列表 -->
     <div class="panel-section">
-      <div class="section-title">地皮列表</div>
-      <div id="ground-texture-list" class="ground-texture-list">
-        <div class="empty-list">暂无地皮素材</div>
+      <div class="section-title">草皮列表</div>
+      <div class="hint" style="margin-bottom: 8px;">每格子显示的草数量可在列表中调整</div>
+      <div id="grass-list" class="ground-texture-list">
+        <div class="empty-list">暂无草皮素材</div>
       </div>
     </div>
 
-    <!-- 添加地皮 -->
+    <!-- 添加草皮 -->
     <div class="panel-section">
-      <div class="section-title">添加地皮</div>
-      <div id="ground-upload-area">
+      <div class="section-title">添加草皮</div>
+      <div id="grass-upload-area">
         <div class="upload-icon">+</div>
-        <div class="upload-text">点击或拖拽上传地皮<br>(PNG/JPG, 正方形)</div>
+        <div class="upload-text">点击上传草皮图片<br>(PNG/JPG, 建议透明背景)</div>
       </div>
-      <input type="file" id="ground-file-input" accept=".png,.jpg,.jpeg">
+      <input type="file" id="grass-file-input" accept=".png,.jpg,.jpeg">
 
-      <div id="ground-upload-preview" style="display: none;">
-        <img id="ground-preview-image" alt="预览">
-        <input type="text" id="ground-texture-name" placeholder="请输入地皮名称">
+      <div id="grass-upload-preview" style="display: none;">
+        <img id="grass-preview-image" alt="预览">
+        <input type="text" id="grass-name-input" placeholder="请输入草皮名称">
+        <div class="control-group" style="margin-top: 8px;">
+          <label class="control-label">每格子数量</label>
+          <input type="number" id="grass-count-input" value="1" min="0" max="10" style="width: 60px;">
+        </div>
         <div class="ground-preview-buttons">
-          <button class="btn btn-secondary" id="ground-cancel-upload">取消</button>
-          <button class="btn btn-primary" id="ground-confirm-upload">确认添加</button>
+          <button class="btn btn-secondary" id="grass-cancel-upload">取消</button>
+          <button class="btn btn-primary" id="grass-confirm-upload">确认添加</button>
         </div>
       </div>
-    </div>
-
-    <!-- 地皮编辑 -->
-    <div class="panel-section">
-      <div class="section-title">地皮编辑</div>
-
-      <!-- 2x3 格子选择网格 -->
-      <div id="ground-cell-grid" class="ground-cell-grid"></div>
-
-      <!-- 选中信息 -->
-      <div id="ground-cell-info">点击格子选中，再点击地皮列表应用</div>
     </div>
 
     <!-- 种植控制 -->
