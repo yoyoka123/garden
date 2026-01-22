@@ -71,9 +71,15 @@ export class InputRouter {
    * @param {string} entityType
    * @param {Object} entityData
    * @param {Object} position
-   * @returns {Promise<import('../agent/GardenAgent.js').AgentOutput|null>}
+   * @returns {Promise<{output: import('../agent/GardenAgent.js').AgentOutput, descriptor: Object}|null>}
    */
   async handleDirectInteraction(type, entityType, entityData, position) {
+    // 先获取描述器，供 ChatUI 使用
+    const descriptor = this.interactionManager.entityRegistry.describe(entityType, entityData);
+    if (!descriptor) {
+      return null;
+    }
+
     const output = await this.interactionManager.handleDirectInteraction(
       type, entityType, entityData, position
     );
@@ -83,7 +89,7 @@ export class InputRouter {
       this.notifyListeners(output);
     }
 
-    return output;
+    return { output, descriptor };
   }
 
   /**

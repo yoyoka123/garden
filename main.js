@@ -166,6 +166,9 @@ const grid = new Grid();
 const flowerManager = new FlowerManager(grid, sceneSetup.gardenGroup, BOUQUET_CATALOG);
 const decorationManager = new DecorationManager(sceneSetup.scene);
 
+// 用于装饰物拖拽的无限平面 (y = 1)
+const decorationDragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -1);
+
 // ============================================
 // Agent-Skill 系统初始化
 // ============================================
@@ -265,7 +268,7 @@ function showHarvestSuccessOverlay(flowerData, reason) {
 // ============================================
 // 点击交互
 // ============================================
-function onCanvasClick(event) {
+async function onCanvasClick(event) {
   if (event.shiftKey) return;
 
   const mouse = getMouseNDC(event, sceneSetup.domElement);
@@ -283,11 +286,36 @@ function onCanvasClick(event) {
       const screenPos = toScreenPosition(flowerTop, sceneSetup.camera, sceneSetup.domElement);
 
       if (flowerData.isHarvestable) {
-        chatUI.open(flowerData);
+        // 更新花园状态
+        gardenAgent.updateGardenState({
+          gold: gameState.gold,
+          flowerCount: flowerManager.getPlantedCount()
+        });
+
+        // 通过 InputRouter 处理交互，让 Agent 生成回复
+        const result = await inputRouter.handleDirectInteraction(
+          'click', 'flower', flowerData, screenPos
+        );
+
+        if (result && result.output) {
+          // 往对话中插入交互事件和 Agent 回复
+          chatUI.appendInteraction('click', flowerData, result.descriptor, result.output);
+        }
       } else {
-        const growthProgress = Math.min((Date.now() - flowerData.plantTime) / CONFIG.game.growthTime, 1);
-        const secondsLeft = Math.ceil((1 - growthProgress) * CONFIG.game.growthTime / 1000);
-        uiManager.showSpeechBubble(screenPos.x, screenPos.y, `还需 ${secondsLeft} 秒成长`);
+        // 更新花园状态
+        gardenAgent.updateGardenState({
+          gold: gameState.gold,
+          flowerCount: flowerManager.getPlantedCount()
+        });
+
+        // 通过 InputRouter 处理生长中点击
+        const result = await inputRouter.handleDirectInteraction(
+          'click_growing', 'flower', flowerData, screenPos
+        );
+
+        if (result && result.output) {
+          chatUI.appendInteraction('click_growing', flowerData, result.descriptor, result.output);
+        }
       }
     }
   }
@@ -315,12 +343,29 @@ async function tryPlantAtPosition(clientX, clientY) {
     const cell = grid.getCellAtPosition(point.x, point.z);
 
     if (cell && cell.isEmpty()) {
-      await flowerManager.plantBouquetInCell(
+      const flowers = await flowerManager.plantBouquetInCell(
         cell.col,
         cell.row,
         gameState.selectedBouquet,
         gameState.bouquetCount
       );
+
+      // 种植成功后通知 Agent
+      if (flowers && flowers.length > 0) {
+        const firstFlower = flowers[0];
+        const flowerTop = firstFlower.sprite.position.clone();
+        flowerTop.y += firstFlower.sprite.scale.y;
+        const screenPos = toScreenPosition(flowerTop, sceneSetup.camera, sceneSetup.domElement);
+
+        // 通过 InputRouter 处理种植事件
+        const result = await inputRouter.handleDirectInteraction(
+          'plant', 'flower', firstFlower, screenPos
+        );
+
+        if (result && result.output) {
+          chatUI.appendInteraction('plant', firstFlower, result.descriptor, result.output);
+        }
+      }
     }
   }
 }
@@ -368,9 +413,10 @@ sceneSetup.domElement.addEventListener('mousedown', (e) => {
 
   // 放置装饰物
   if (pendingDecorationImage) {
-    const intersects = raycaster.intersectObject(sceneSetup.groundPlane);
-    const position = intersects.length > 0
-      ? new THREE.Vector3(intersects[0].point.x, 1, intersects[0].point.z)
+    // 使用无限平面计算交点，允许放置到任意位置
+    const intersectPoint = new THREE.Vector3();
+    const position = raycaster.ray.intersectPlane(decorationDragPlane, intersectPoint)
+      ? new THREE.Vector3(intersectPoint.x, 1, intersectPoint.z)
       : new THREE.Vector3(0, 1, 0);
 
     decorationManager.create(pendingDecorationImage, position);
@@ -402,9 +448,10 @@ sceneSetup.domElement.addEventListener('mousemove', (e) => {
   const mouse = getMouseNDC(e, sceneSetup.domElement);
   raycaster.setFromCamera(mouse, sceneSetup.camera);
 
-  const intersects = raycaster.intersectObject(sceneSetup.groundPlane);
-  if (intersects.length > 0) {
-    decorationManager.updateDragPosition(intersects[0].point.x, intersects[0].point.z);
+  // 使用无限平面计算交点，允许拖拽到任意位置
+  const intersectPoint = new THREE.Vector3();
+  if (raycaster.ray.intersectPlane(decorationDragPlane, intersectPoint)) {
+    decorationManager.updateDragPosition(intersectPoint.x, intersectPoint.z);
   }
 });
 
@@ -568,6 +615,11 @@ function setupBouquetUpload() {
       }
 
       updateBouquetUI();
+
+      // 更新 FlowerDescriptor 和 ChatUI 的目录引用
+      flowerDescriptor.updateCatalog(BOUQUET_CATALOG);
+      chatUI.updateBouquetCatalog(BOUQUET_CATALOG);
+
       if (preview) preview.style.display = 'none';
       pendingImageData = null;
       if (fileInput) fileInput.value = '';

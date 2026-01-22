@@ -4,6 +4,7 @@
  */
 
 import { EntityDescriptorBase } from '../EntityDescriptor.js';
+import { EntityInteractions } from '../../config/prompts/index.js';
 
 export class FlowerDescriptor extends EntityDescriptorBase {
   /**
@@ -12,6 +13,7 @@ export class FlowerDescriptor extends EntityDescriptorBase {
   constructor(bouquetCatalog) {
     super('flower');
     this.bouquetCatalog = bouquetCatalog;
+    this.config = EntityInteractions.flower;
   }
 
   /**
@@ -56,14 +58,23 @@ export class FlowerDescriptor extends EntityDescriptorBase {
    * @returns {string}
    */
   buildDescription(flowerData, agent) {
-    const status = flowerData.isHarvestable ? '已成熟' : '成长中';
+    const { description: descConfig } = this.config;
+    const status = flowerData.isHarvestable
+      ? descConfig.status.mature
+      : descConfig.status.growing;
     const name = agent.name || flowerData.bouquetKey || '未知花朵';
     const personality = agent.personality || '';
 
-    let desc = `这是一朵名为"${name}"的花。状态：${status}。`;
-    if (personality) {
-      desc += `性格：${personality}。`;
+    let desc = descConfig.template
+      .replace('{name}', name)
+      .replace('{status}', status)
+      .replace('{personality}', personality);
+
+    // 如果没有性格，移除性格部分
+    if (!personality) {
+      desc = desc.replace('性格：。', '');
     }
+
     return desc;
   }
 
@@ -76,34 +87,56 @@ export class FlowerDescriptor extends EntityDescriptorBase {
    */
   buildInteractions(flowerData, agent, customInteractions) {
     const isHarvestable = flowerData.isHarvestable;
+    const { interactions: interConfig } = this.config;
 
     // 默认交互定义
     const defaultInteractions = {
       click: isHarvestable
         ? {
-            condition: '成熟时',
-            action: '偷花',
+            condition: interConfig.clickMature.condition,
+            action: interConfig.clickMature.action,
             description: agent.harvestRule
-              ? `采摘规则：${agent.harvestRule}`
-              : '可以尝试采摘这朵花',
-            userPrompt: agent.greeting || '点击与花朵对话'
+              ? interConfig.clickMature.description.withRule.replace('{rule}', agent.harvestRule)
+              : interConfig.clickMature.description.default,
+            userPrompt: agent.greeting
+              ? interConfig.clickMature.userPrompt.withGreeting.replace('{greeting}', agent.greeting)
+              : interConfig.clickMature.userPrompt.default
           }
         : {
-            condition: '未成熟时',
-            action: '查看',
-            description: '花朵还在成长中，可以查看状态',
-            userPrompt: '花朵还在成长中...'
+            condition: interConfig.clickImmature.condition,
+            action: interConfig.clickImmature.action,
+            description: interConfig.clickImmature.description,
+            userPrompt: interConfig.clickImmature.userPrompt
+          },
+      // 生长中点击（复用 clickImmature 配置）
+      click_growing: {
+        condition: interConfig.clickImmature.condition,
+        action: interConfig.clickImmature.action,
+        description: interConfig.clickImmature.description,
+        userPrompt: interConfig.clickImmature.userPrompt
+      },
+      // 种植交互
+      plant: interConfig.plant
+        ? {
+            action: interConfig.plant.action,
+            description: interConfig.plant.description,
+            userPrompt: interConfig.plant.userPrompt
+          }
+        : {
+            action: '种植',
+            description: '刚刚种下这朵花',
+            userPrompt: '种下了新花！'
           },
       dblclick: {
-        action: '快速查看',
-        description: '快速查看花朵详情',
-        userPrompt: '查看花朵信息'
+        action: interConfig.dblclick.action,
+        description: interConfig.dblclick.description,
+        userPrompt: interConfig.dblclick.userPrompt
       },
       contextmenu: isHarvestable
         ? {
-            action: '查看采摘提示',
-            description: '查看如何采摘这朵花',
-            userPrompt: '查看采摘提示'
+            action: interConfig.contextmenu.action,
+            description: interConfig.contextmenu.description,
+            userPrompt: interConfig.contextmenu.userPrompt
           }
         : null,
       drag: null
@@ -124,7 +157,7 @@ export class FlowerDescriptor extends EntityDescriptorBase {
    */
   getGrowthTimeRemaining(flowerData, growthTime = 10000) {
     if (flowerData.isHarvestable) {
-      return '已成熟';
+      return this.config.description.status.mature;
     }
     const elapsed = Date.now() - flowerData.plantTime;
     const remaining = Math.max(0, growthTime - elapsed);

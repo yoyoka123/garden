@@ -5,6 +5,7 @@
 
 import { AgentContext } from './AgentContext.js';
 import { AgentPromptBuilder } from './AgentPromptBuilder.js';
+import { AgentPrompts } from '../config/prompts/index.js';
 
 /**
  * @typedef {Object} AgentConfig
@@ -133,7 +134,7 @@ export class GardenAgent {
 
     } catch (error) {
       console.error('GardenAgent 处理失败:', error);
-      const errorText = '（花园精灵似乎走神了...）';
+      const errorText = AgentPrompts.errors.agentConfused;
       this.context.addAssistantMessage(errorText);
       return {
         text: errorText,
@@ -191,6 +192,6 @@ export class GardenAgent {
     if (customData?.greeting) {
       return customData.greeting;
     }
-    return `你好！我是${this.config.name}，这座花园的守护精灵。有什么可以帮助你的吗？`;
+    return AgentPrompts.defaultGreeting.replace('{name}', this.config.name);
   }
 }

@@ -1,23 +1,25 @@
 /**
  * 聊天界面管理
- * 适配 Agent-Skill 架构
+ * 通用 Agent 聊天界面，支持文本对话和交互事件
  */
 
 import { eventBus, Events } from '../EventBus.js';
 import { getElement, toggleClass, setVisible } from '../utils/dom-helpers.js';
+import { EntityInteractions } from '../config/prompts/index.js';
 
 export class ChatUI {
   /**
    * @param {Object} bouquetCatalog - 花束目录
-   * @param {import('../interactions/InputRouter.js').InputRouter} [inputRouter] - 输入路由器
+   * @param {import('../interactions/InputRouter.js').InputRouter} inputRouter - 输入路由器
    */
-  constructor(bouquetCatalog, inputRouter = null) {
+  constructor(bouquetCatalog, inputRouter) {
     this.bouquetCatalog = bouquetCatalog;
     this.inputRouter = inputRouter;
-    this.currentChatFlower = null;
+    this.isActive = false;
 
     this.cacheElements();
     this.bindEvents();
+    this.initChat();
   }
 
   /**
@@ -68,9 +70,9 @@ export class ChatUI {
       });
     }
 
-    // 关闭按钮
+    // 关闭按钮 - 改为最小化
     if (this.elements.closeBtn) {
-      this.elements.closeBtn.addEventListener('click', () => this.close());
+      this.elements.closeBtn.addEventListener('click', () => this.minimize());
     }
 
     // 切换按钮
@@ -78,84 +80,101 @@ export class ChatUI {
       this.elements.toggleBtn.addEventListener('click', () => this.toggle());
     }
 
-    // ESC 关闭
+    // ESC 最小化
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        this.close();
+      if (e.key === 'Escape' && this.isActive) {
+        this.minimize();
       }
     });
   }
 
   /**
-   * 打开聊天界面（通过交互事件）
-   * @param {Object} flowerData - 花朵数据
-   * @param {import('../entities/EntityDescriptor.js').EntityDescriptor} [descriptor] - 实体描述
+   * 初始化通用聊天界面
    */
-  open(flowerData, descriptor = null) {
-    const bouquetData = this.bouquetCatalog[flowerData.bouquetKey];
-    if (!bouquetData || !bouquetData.agent) {
-      eventBus.emit(Events.STATUS_MESSAGE, { message: '该花朵没有配置对话' });
-      return;
-    }
-
-    const agent = bouquetData.agent;
-
-    this.currentChatFlower = {
-      flowerData,
-      bouquetKey: flowerData.bouquetKey,
-      agent,
-      descriptor
-    };
-
-    // 展开侧边栏
-    toggleClass(this.elements.sidebar, 'collapsed', false);
-    this.elements.toggleBtn.textContent = '▶';
-    toggleClass(this.elements.goldDisplay, 'chat-active', true);
-
+  initChat() {
     // 激活聊天界面
     toggleClass(this.elements.header, 'inactive', false);
     toggleClass(this.elements.header, 'active', true);
 
-    // 设置信息
-    const name = descriptor?.name || agent.name;
-    this.elements.name.textContent = `对话对象：${name}`;
-    this.elements.status.textContent = '想和你聊聊~';
+    // 设置默认信息
+    this.elements.name.textContent = '花园精灵';
+    this.elements.status.textContent = '随时可以聊天~';
 
-    // 设置头像
-    const images = Array.isArray(bouquetData) ? bouquetData : bouquetData.images;
-    if (images && images.length > 0) {
-      this.elements.avatar.style.backgroundImage = `url(${images[0]})`;
-    }
-
-    // 显示聊天内容
+    // 显示聊天内容区域
     toggleClass(this.elements.empty, 'hidden', true);
     toggleClass(this.elements.content, 'active', true);
 
-    // 清空之前的消息
-    this.elements.messages.innerHTML = '';
+    // 显示欢迎消息
+    this.addMessage('flower', this.inputRouter?.getGreeting() || '你好！我是花园精灵，有什么可以帮助你的吗？');
 
-    // 显示问候语
-    const greeting = descriptor?.customData?.greeting || agent.greeting;
-    if (greeting) {
-      this.addMessage('flower', greeting);
-    }
-
-    // 聚焦输入框
-    this.elements.input.focus();
-
-    eventBus.emit(Events.CHAT_STARTED, { flowerData, agent, descriptor });
+    this.isActive = true;
   }
 
   /**
-   * 通过 Agent 输出打开/更新聊天
-   * @param {import('../agent/GardenAgent.js').AgentOutput} output
-   * @param {Object} flowerData
+   * 展开聊天界面
    */
-  openWithAgentOutput(output, flowerData) {
-    if (!this.currentChatFlower || this.currentChatFlower.flowerData.id !== flowerData.id) {
-      this.open(flowerData);
+  expand() {
+    toggleClass(this.elements.sidebar, 'collapsed', false);
+    this.elements.toggleBtn.textContent = '▶';
+    toggleClass(this.elements.goldDisplay, 'chat-active', true);
+    this.elements.input.focus();
+  }
+
+  /**
+   * 最小化聊天界面（不清空消息）
+   */
+  minimize() {
+    toggleClass(this.elements.sidebar, 'collapsed', true);
+    this.elements.toggleBtn.textContent = '◀';
+    toggleClass(this.elements.goldDisplay, 'chat-active', false);
+
+    // 清除 Agent 的焦点实体
+    if (this.inputRouter) {
+      this.inputRouter.getAgent().clearFocusedEntity();
+    }
+  }
+
+  /**
+   * 切换侧边栏
+   */
+  toggle() {
+    const isCollapsed = this.elements.sidebar.classList.contains('collapsed');
+    if (isCollapsed) {
+      this.expand();
+    } else {
+      this.minimize();
+    }
+  }
+
+  /**
+   * 添加交互事件到对话（点击花朵等）
+   * @param {string} interactionType - 交互类型 ('click' | 'dblclick' | 'contextmenu')
+   * @param {Object} flowerData - 花朵数据
+   * @param {Object} descriptor - 实体描述
+   * @param {import('../agent/GardenAgent.js').AgentOutput} output - Agent 输出
+   */
+  appendInteraction(interactionType, flowerData, descriptor, output) {
+    // 确保聊天界面展开
+    this.expand();
+
+    // 更新头部信息显示当前焦点
+    const name = descriptor?.name || flowerData.bouquetKey || '花朵';
+    this.elements.name.textContent = `正在关注：${name}`;
+
+    // 设置头像
+    const bouquetData = this.bouquetCatalog[flowerData.bouquetKey];
+    if (bouquetData) {
+      const images = Array.isArray(bouquetData) ? bouquetData : bouquetData.images;
+      if (images && images.length > 0) {
+        this.elements.avatar.style.backgroundImage = `url(${images[0]})`;
+      }
     }
 
+    // 显示用户动作
+    const actionLabel = EntityInteractions.interactionLabels[interactionType] || '操作了';
+    this.addMessage('action', `${actionLabel} ${name}`);
+
+    // 显示 Agent 回复
     if (output.text) {
       this.addMessage('flower', output.text);
     }
@@ -170,53 +189,13 @@ export class ChatUI {
         }
       }
     }
-  }
 
-  /**
-   * 关闭聊天界面
-   */
-  close() {
-    toggleClass(this.elements.sidebar, 'collapsed', true);
-    this.elements.toggleBtn.textContent = '◀';
-    toggleClass(this.elements.goldDisplay, 'chat-active', false);
-
-    toggleClass(this.elements.header, 'active', false);
-    toggleClass(this.elements.header, 'inactive', true);
-
-    this.elements.name.textContent = '无对话对象';
-    this.elements.status.textContent = '点击成熟的花朵开始对话';
-
-    toggleClass(this.elements.content, 'active', false);
-    toggleClass(this.elements.empty, 'hidden', false);
-
-    if (this.currentChatFlower) {
-      eventBus.emit(Events.CHAT_ENDED, {
-        flowerData: this.currentChatFlower.flowerData
-      });
-    }
-
-    this.currentChatFlower = null;
-
-    // 清除 Agent 的焦点实体
-    if (this.inputRouter) {
-      this.inputRouter.getAgent().clearFocusedEntity();
-    }
-  }
-
-  /**
-   * 切换侧边栏
-   */
-  toggle() {
-    const isCollapsed = this.elements.sidebar.classList.contains('collapsed');
-
-    toggleClass(this.elements.sidebar, 'collapsed', !isCollapsed);
-    this.elements.toggleBtn.textContent = isCollapsed ? '▶' : '◀';
-    toggleClass(this.elements.goldDisplay, 'chat-active', isCollapsed);
+    eventBus.emit(Events.CHAT_STARTED, { flowerData, descriptor });
   }
 
   /**
    * 添加消息到界面
-   * @param {string} type - 消息类型 ('user' | 'flower' | 'system')
+   * @param {string} type - 消息类型 ('user' | 'flower' | 'system' | 'action')
    * @param {string} text - 消息文本
    */
   addMessage(type, text) {
@@ -261,11 +240,11 @@ export class ChatUI {
   }
 
   /**
-   * 发送消息
+   * 发送消息（通用聊天，不需要先点击花朵）
    */
   async sendMessage() {
     const userMessage = this.elements.input.value.trim();
-    if (!userMessage || !this.currentChatFlower) return;
+    if (!userMessage) return;
 
     // 清空输入框
     this.elements.input.value = '';
@@ -278,49 +257,24 @@ export class ChatUI {
     this.showTyping();
 
     try {
-      if (this.inputRouter) {
-        // 使用新的 Agent 系统
-        const output = await this.inputRouter.handleTextInput(userMessage);
+      const output = await this.inputRouter.handleTextInput(userMessage);
 
-        this.hideTyping();
+      this.hideTyping();
 
-        if (output.text) {
-          this.addMessage('flower', output.text);
-        }
-
-        // 处理工具执行结果
-        if (output.toolExecutions) {
-          for (const execution of output.toolExecutions) {
-            if (execution.toolName === 'harvest' && execution.result.success) {
-              setTimeout(() => {
-                this.handleHarvestSuccess(execution.arguments.reason);
-              }, 500);
-            }
-          }
-        }
-      } else {
-        // 兼容模式：使用旧的 FlowerAgent
-        const { chatWithFlower, conversationManager } = await import('../ai/FlowerAgent.js');
-        const conversation = conversationManager.getOrCreateConversation(
-          this.currentChatFlower.flowerData,
-          this.currentChatFlower.agent
-        );
-
-        const result = await chatWithFlower(conversation, userMessage);
-
-        this.hideTyping();
-
-        if (result.text) {
-          this.addMessage('flower', result.text);
-        }
-
-        if (result.harvested) {
-          setTimeout(() => {
-            this.handleHarvestSuccess(result.reason);
-          }, 500);
-        }
+      if (output.text) {
+        this.addMessage('flower', output.text);
       }
 
+      // 处理工具执行结果
+      if (output.toolExecutions) {
+        for (const execution of output.toolExecutions) {
+          if (execution.toolName === 'harvest' && execution.result.success) {
+            setTimeout(() => {
+              this.handleHarvestSuccess(execution.arguments.reason);
+            }, 500);
+          }
+        }
+      }
     } catch (error) {
       this.hideTyping();
       this.addMessage('system', `出错了：${error.message}`);
@@ -335,23 +289,12 @@ export class ChatUI {
    * @param {string} reason - 采摘原因
    */
   handleHarvestSuccess(reason) {
-    if (!this.currentChatFlower) return;
+    // 显示采摘成功消息
+    this.addMessage('system', `采摘成功！`);
 
-    const flowerData = this.currentChatFlower.flowerData;
-    const agent = this.currentChatFlower.agent;
-
-    this.close();
-
-    // 发送采摘成功事件（如果不是通过 HarvestSkill 发送的）
-    // HarvestSkill 已经发送了事件，这里不需要重复发送
-  }
-
-  /**
-   * 获取当前聊天的花朵
-   * @returns {Object|null}
-   */
-  getCurrentFlower() {
-    return this.currentChatFlower?.flowerData || null;
+    // 重置头部信息
+    this.elements.name.textContent = '花园精灵';
+    this.elements.status.textContent = '随时可以聊天~';
   }
 
   /**
@@ -360,5 +303,14 @@ export class ChatUI {
    */
   updateBouquetCatalog(bouquetCatalog) {
     this.bouquetCatalog = bouquetCatalog;
+  }
+
+  // 保留兼容方法
+  open(flowerData, descriptor = null) {
+    this.expand();
+  }
+
+  close() {
+    this.minimize();
   }
 }
