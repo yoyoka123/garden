@@ -111,6 +111,7 @@ export const Events = {
   GOLD_CHANGED: 'game:goldChanged',
   STATUS_MESSAGE: 'game:statusMessage',
   LOADING_CHANGED: 'game:loadingChanged',
+  GARDEN_RESIZED: 'game:gardenResized',
 
   // Agent 事件
   AGENT_INPUT: 'agent:input',

@@ -92,6 +92,25 @@ export const SkillDefinitions = {
           type: 'object',
           properties: {}
         }
+      },
+      {
+        type: 'function',
+        name: 'resize_garden',
+        description: '调整花园土地的大小。可以增大或缩小花园的格子数量。用于回答"把土地变大"、"缩小花园"、"改成5x5"等问题。',
+        parameters: {
+          type: 'object',
+          properties: {
+            cols: {
+              type: 'number',
+              description: '新的列数（宽度方向），范围2-10'
+            },
+            rows: {
+              type: 'number',
+              description: '新的行数（深度方向），范围2-10'
+            }
+          },
+          required: ['cols', 'rows']
+        }
       }
     ],
 
@@ -99,7 +118,8 @@ export const SkillDefinitions = {
       errors: {
         gardenFull: '花园已满，没有空位了',
         unknownBouquet: '没有找到"{bouquetKey}"这种花',
-        plantFailed: '种植失败'
+        plantFailed: '种植失败',
+        invalidSize: '土地大小无效，列数和行数必须在2-10之间'
       },
       success: {
         planted: '在位置 ({col}, {row}) 种植了 {count} 朵 {bouquetKey}'

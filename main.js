@@ -257,6 +257,33 @@ eventBus.on(Events.FLOWER_HARVESTED, () => {
   uiManager.updatePlantedCount(flowerManager.getPlantedCount());
 });
 
+// 花园大小调整 -> 更新场景
+eventBus.on(Events.GARDEN_RESIZED, async ({ newCols, newRows, preservedCount }) => {
+  // 更新场景中的地面和网格
+  sceneSetup.updateGardenSize(grid);
+  
+  // 重新加载草地（使用新的网格尺寸）
+  await reloadGrass();
+  
+  // 更新花朵位置（因为网格大小改变，需要重新计算位置）
+  // FlowerManager 内部会处理网格变化，但我们需要确保所有花朵都在新网格范围内
+  const allFlowers = flowerManager.getAllFlowers();
+  allFlowers.forEach(flowerData => {
+    const { cellCol, cellRow } = flowerData;
+    // 如果花朵在新网格范围内，更新其位置
+    if (cellCol < newCols && cellRow < newRows) {
+      const cellCenter = grid.getCellCenter(cellCol, cellRow);
+      // 更新花朵精灵位置（如果需要）
+      // 注意：FlowerManager 可能需要额外的更新逻辑
+    }
+  });
+  
+  // 更新 UI 显示
+  uiManager.updatePlantedCount(flowerManager.getPlantedCount());
+  
+  console.log(`花园大小已调整为 ${newCols} x ${newRows}，保留了 ${preservedCount} 朵花`);
+});
+
 // ============================================
 // 采摘成功动画
 // ============================================
@@ -473,8 +500,21 @@ window.addEventListener('mouseup', () => {
   }
 });
 
-// 滚轮缩放装饰物
+// 滚轮缩放装饰物（仅在装饰物上时处理，其他情况让 OrbitControls 处理）
+// 注意：Mac 触控板双指缩放手势会触发 wheel 事件
 sceneSetup.domElement.addEventListener('wheel', (e) => {
+  // 检测触控板双指缩放手势：
+  // 1. ctrlKey === true（某些浏览器中触控板手势会设置此标志）
+  // 2. deltaMode === 0 且 deltaY 绝对值较大（像素模式，触控板常用）
+  const isTrackpadGesture = e.ctrlKey || (e.deltaMode === 0 && Math.abs(e.deltaY) > 5);
+  
+  // 如果是触控板双指缩放手势，让 OrbitControls 处理，不要阻止
+  if (isTrackpadGesture) {
+    // 触控板双指缩放手势，让 OrbitControls 处理场景缩放
+    return;
+  }
+
+  // 鼠标滚轮事件：检查是否在装饰物上
   const mouse = getMouseNDC(e, sceneSetup.domElement);
   raycaster.setFromCamera(mouse, sceneSetup.camera);
 
@@ -482,12 +522,17 @@ sceneSetup.domElement.addEventListener('wheel', (e) => {
   const intersects = raycaster.intersectObjects(decorationSprites);
 
   if (intersects.length > 0) {
+    // 鼠标在装饰物上，缩放装饰物（仅处理鼠标滚轮）
     e.preventDefault();
+    e.stopPropagation();
     const decoration = decorationManager.getBySprite(intersects[0].object);
     if (decoration) {
-      decorationManager.scale(decoration, e.deltaY);
+      // 处理鼠标滚轮：deltaMode === 1 表示行模式（鼠标滚轮常用）
+      const delta = e.deltaMode === 1 ? e.deltaY : e.deltaY * 0.1;
+      decorationManager.scale(decoration, delta);
     }
   }
+  // 如果不在装饰物上且不是触控板手势，让 OrbitControls 处理缩放
 }, { passive: false });
 
 // 右键删除装饰物

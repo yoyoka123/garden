@@ -4,7 +4,7 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { CONFIG, GARDEN_WIDTH, GARDEN_DEPTH, GROUND_Y } from '../config.js';
+import { CONFIG, GROUND_Y } from '../config.js';
 import { createGradientSkyTexture, createDashedMaterial } from '../utils/three-helpers.js';
 import { resources } from '../core/Resources.js';
 import { GrassManager } from './GrassManager.js';
@@ -44,8 +44,21 @@ export class SceneSetup {
     this.scene.add(this.gardenGroup);
 
     // 创建地面（用于射线检测，不可见）
-    this.groundPlane = this.createGround();
-    this.dashedGrid = this.createDashedGrid();
+    // 使用默认尺寸初始化，后续可以通过 updateGardenSize 更新
+    const defaultWidth = CONFIG.grid.cols * CONFIG.grid.cellWidth;
+    const defaultDepth = CONFIG.grid.rows * CONFIG.grid.cellDepth;
+    this.groundPlane = this.createGround(defaultWidth, defaultDepth);
+    
+    // 创建临时网格对象用于初始化
+    const tempGrid = {
+      cols: CONFIG.grid.cols,
+      rows: CONFIG.grid.rows,
+      cellWidth: CONFIG.grid.cellWidth,
+      cellDepth: CONFIG.grid.cellDepth,
+      width: defaultWidth,
+      depth: defaultDepth
+    };
+    this.dashedGrid = this.createDashedGrid(tempGrid);
 
     // 草地管理器
     this.grassManager = new GrassManager(this.scene);
@@ -94,6 +107,10 @@ export class SceneSetup {
     controls.maxPolarAngle = config.maxPolarAngle;
     controls.minDistance = config.minDistance;
     controls.maxDistance = config.maxDistance;
+    // 明确启用滚轮缩放（支持鼠标滚轮和触控板手势）
+    controls.enableZoom = true;
+    // 调整缩放速度以适应触控板手势
+    controls.zoomSpeed = 0.5;
     return controls;
   }
 
@@ -139,9 +156,11 @@ export class SceneSetup {
 
   /**
    * 创建地面（用于射线检测，不可见）
+   * @param {number} width - 花园宽度
+   * @param {number} depth - 花园深度
    */
-  createGround() {
-    const geometry = new THREE.PlaneGeometry(GARDEN_WIDTH, GARDEN_DEPTH);
+  createGround(width, depth) {
+    const geometry = new THREE.PlaneGeometry(width, depth);
     const material = new THREE.MeshBasicMaterial({
       color: 0x8B6914,
       transparent: true,
@@ -158,19 +177,22 @@ export class SceneSetup {
 
   /**
    * 创建虚线网格
+   * @param {Object} grid - 网格对象
    */
-  createDashedGrid() {
+  createDashedGrid(grid) {
     const gridGroup = new THREE.Group();
     const material = createDashedMaterial();
 
-    const { cols, rows, cellWidth, cellDepth } = CONFIG.grid;
+    const { cols, rows, cellWidth, cellDepth } = grid;
+    const width = grid.width;
+    const depth = grid.depth;
 
     // 垂直线
     for (let i = 1; i < cols; i++) {
-      const x = -GARDEN_WIDTH / 2 + i * cellWidth;
+      const x = -width / 2 + i * cellWidth;
       const points = [
-        new THREE.Vector3(x, 0.01, -GARDEN_DEPTH / 2),
-        new THREE.Vector3(x, 0.01, GARDEN_DEPTH / 2)
+        new THREE.Vector3(x, 0.01, -depth / 2),
+        new THREE.Vector3(x, 0.01, depth / 2)
       ];
       const geometry = new THREE.BufferGeometry().setFromPoints(points);
       const line = new THREE.Line(geometry, material);
@@ -180,10 +202,10 @@ export class SceneSetup {
 
     // 水平线
     for (let i = 1; i < rows; i++) {
-      const z = -GARDEN_DEPTH / 2 + i * cellDepth;
+      const z = -depth / 2 + i * cellDepth;
       const points = [
-        new THREE.Vector3(-GARDEN_WIDTH / 2, 0.01, z),
-        new THREE.Vector3(GARDEN_WIDTH / 2, 0.01, z)
+        new THREE.Vector3(-width / 2, 0.01, z),
+        new THREE.Vector3(width / 2, 0.01, z)
       ];
       const geometry = new THREE.BufferGeometry().setFromPoints(points);
       const line = new THREE.Line(geometry, material);
@@ -193,6 +215,34 @@ export class SceneSetup {
 
     this.scene.add(gridGroup);
     return gridGroup;
+  }
+
+  /**
+   * 更新花园大小（更新地面和网格）
+   * @param {Object} grid - 网格对象
+   */
+  updateGardenSize(grid) {
+    const width = grid.width;
+    const depth = grid.depth;
+
+    // 更新地面
+    if (this.groundPlane) {
+      this.groundGroup.remove(this.groundPlane);
+      this.groundPlane.geometry.dispose();
+      this.groundPlane.material.dispose();
+    }
+    this.groundPlane = this.createGround(width, depth);
+
+    // 更新网格
+    if (this.dashedGrid) {
+      this.scene.remove(this.dashedGrid);
+      // 清理所有子对象
+      this.dashedGrid.children.forEach(child => {
+        child.geometry.dispose();
+        child.material.dispose();
+      });
+    }
+    this.dashedGrid = this.createDashedGrid(grid);
   }
 
   /**

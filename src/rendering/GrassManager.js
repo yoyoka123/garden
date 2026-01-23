@@ -42,7 +42,11 @@ export class GrassManager {
       }
     }
 
-    const { cols, rows, cellWidth, cellDepth } = CONFIG.grid;
+    // 使用传入的 grid 对象获取尺寸信息
+    const cols = grid.cols;
+    const rows = grid.rows;
+    const cellWidth = grid.cellWidth;
+    const cellDepth = grid.cellDepth;
 
     // 遍历每个格子
     for (let row = 0; row < rows; row++) {

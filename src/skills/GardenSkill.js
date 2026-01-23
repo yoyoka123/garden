@@ -5,6 +5,7 @@
 
 import { BaseSkill } from './BaseSkill.js';
 import { SkillDefinitions } from '../config/prompts/index.js';
+import { eventBus, Events } from '../EventBus.js';
 
 export class GardenSkill extends BaseSkill {
   /**
@@ -46,6 +47,8 @@ export class GardenSkill extends BaseSkill {
         return this.executeQuery();
       case 'list_bouquets':
         return this.executeListBouquets();
+      case 'resize_garden':
+        return this.executeResizeGarden(args);
       default:
         return { success: false, message: `未知工具: ${toolName}` };
     }
@@ -133,5 +136,55 @@ export class GardenSkill extends BaseSkill {
       bouquets,
       message: `可用花束类型：${bouquets.map(b => b.key).join('、')}`
     };
+  }
+
+  /**
+   * 调整花园大小
+   * @param {{cols: number, rows: number}} args
+   */
+  executeResizeGarden({ cols, rows }) {
+    // 验证参数
+    if (typeof cols !== 'number' || typeof rows !== 'number') {
+      return {
+        success: false,
+        message: this.config.messages.errors.invalidSize
+      };
+    }
+
+    if (cols < 2 || cols > 10 || rows < 2 || rows > 10) {
+      return {
+        success: false,
+        message: this.config.messages.errors.invalidSize
+      };
+    }
+
+    try {
+      // 调整网格大小
+      const result = this.grid.resize(cols, rows);
+
+      // 发出事件，通知需要更新场景
+      eventBus.emit(Events.GARDEN_RESIZED, {
+        newCols: result.newCols,
+        newRows: result.newRows,
+        preservedCount: result.preservedCount
+      });
+
+      // 更新花朵管理器中的网格引用（如果需要）
+      // 注意：FlowerManager 需要重新计算所有花朵的位置
+
+      return {
+        success: true,
+        newCols: result.newCols,
+        newRows: result.newRows,
+        preservedCount: result.preservedCount,
+        message: `花园大小已调整为 ${result.newCols} x ${result.newRows}，保留了 ${result.preservedCount} 朵花`
+      };
+    } catch (error) {
+      console.error('GardenSkill: 调整花园大小失败', error);
+      return {
+        success: false,
+        message: '调整花园大小失败'
+      };
+    }
   }
 }
