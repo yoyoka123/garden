@@ -16,10 +16,22 @@ import { CONFIG } from '../config.js';
  */
 
 /**
+ * @typedef {Object} DecorationInfo
+ * @property {string} id - 装饰物ID
+ * @property {string} name - 装饰物名字
+ * @property {string} type - 装饰物类型（如"cloud", "butterfly"）
+ * @property {{x: number, z: number}} position - 位置
+ * @property {number} scale - 缩放
+ * @property {boolean} hasMotion - 是否有运动效果
+ * @property {string|null} personality - AI性格描述
+ */
+
+/**
  * @typedef {Object} GardenSnapshot
  * @property {number} gold - 当前金币
  * @property {FlowerInfo[]} flowers - 所有花朵信息
- * @property {{total: number, harvestable: number, growing: number}} summary - 统计摘要
+ * @property {DecorationInfo[]} decorations - 所有装饰物信息
+ * @property {{flowers: {total: number, harvestable: number, growing: number}, decorations: {total: number, byType: Object}}} summary - 统计摘要
  */
 
 export class GardenStateProvider {
@@ -28,12 +40,14 @@ export class GardenStateProvider {
    * @param {import('../managers/GameState.js').GameState} gameState
    * @param {import('../core/Grid.js').Grid} grid
    * @param {Object} bouquetCatalog - 花束目录
+   * @param {import('../managers/DecorationManager.js').DecorationManager} [decorationManager] - 装饰物管理器
    */
-  constructor(flowerManager, gameState, grid, bouquetCatalog) {
+  constructor(flowerManager, gameState, grid, bouquetCatalog, decorationManager = null) {
     this.flowerManager = flowerManager;
     this.gameState = gameState;
     this.grid = grid;
     this.bouquetCatalog = bouquetCatalog;
+    this.decorationManager = decorationManager;
   }
 
   /**
@@ -45,13 +59,23 @@ export class GardenStateProvider {
     const harvestable = flowers.filter(f => f.isHarvestable).length;
     const growing = flowers.filter(f => !f.isHarvestable).length;
 
+    const decorations = this._getDecorations();
+    const decorationsByType = this._groupDecorationsByType(decorations);
+
     return {
       gold: this.gameState.gold,
       flowers,
+      decorations,
       summary: {
-        total: flowers.length,
-        harvestable,
-        growing
+        flowers: {
+          total: flowers.length,
+          harvestable,
+          growing
+        },
+        decorations: {
+          total: decorations.length,
+          byType: decorationsByType
+        }
       }
     };
   }
@@ -79,25 +103,24 @@ export class GardenStateProvider {
 
   /**
    * 按格子分组的花朵状态
-   * @returns {{cellMap: Map<string, FlowerInfo[]>, summary: Object, gold: number}}
+   * @returns {{cellMap: Object<string, FlowerInfo[]>, summary: Object, gold: number}}
    */
   getFlowersByCell() {
     const snapshot = this.getSnapshot();
-    const cellMap = new Map();
+    const cellMap = {};
 
     // 初始化所有格子
     for (let row = 0; row < this.grid.rows; row++) {
       for (let col = 0; col < this.grid.cols; col++) {
-        cellMap.set(`${col},${row}`, []);
+        cellMap[`${col},${row}`] = [];
       }
     }
 
     // 填充花朵到对应格子
     for (const flower of snapshot.flowers) {
       const key = `${flower.cell.col},${flower.cell.row}`;
-      const cellFlowers = cellMap.get(key);
-      if (cellFlowers) {
-        cellFlowers.push(flower);
+      if (cellMap[key]) {
+        cellMap[key].push(flower);
       }
     }
 
@@ -106,5 +129,65 @@ export class GardenStateProvider {
       summary: snapshot.summary,
       gold: snapshot.gold
     };
+  }
+
+  /**
+   * 获取可用的花束类型列表
+   * @returns {Array<{key: string, name: string, personality: string}>}
+   */
+  getAvailableBouquets() {
+    return Object.entries(this.bouquetCatalog).map(([key, config]) => ({
+      key,
+      name: config.agent?.name || key,
+      personality: config.agent?.personality || ''
+    }));
+  }
+
+  /**
+   * 获取所有装饰物信息
+   * @returns {DecorationInfo[]}
+   */
+  _getDecorations() {
+    if (!this.decorationManager) return [];
+
+    return this.decorationManager.decorations.map(d => ({
+      id: d.id,
+      name: d.ai?.name || d.configId || '装饰物',
+      type: d.configId || 'custom',
+      position: {
+        x: Math.round(d.position.x * 100) / 100,
+        z: Math.round(d.position.z * 100) / 100
+      },
+      scale: Math.round(d.scale * 100) / 100,
+      hasMotion: this.decorationManager.entities.has(d.id),
+      personality: d.ai?.personality || null
+    }));
+  }
+
+  /**
+   * 按类型分组装饰物
+   * @param {DecorationInfo[]} decorations
+   * @returns {Object<string, number>}
+   */
+  _groupDecorationsByType(decorations) {
+    const groups = {};
+    for (const d of decorations) {
+      groups[d.type] = (groups[d.type] || 0) + 1;
+    }
+    return groups;
+  }
+
+  /**
+   * 获取装饰物简述（用于Agent提示词）
+   * @returns {string}
+   */
+  getDecorationsSummary() {
+    const decorations = this._getDecorations();
+    if (decorations.length === 0) return '暂无装饰物';
+
+    const groups = this._groupDecorationsByType(decorations);
+    return Object.entries(groups)
+      .map(([type, count]) => `${type} x${count}`)
+      .join(', ');
   }
 }

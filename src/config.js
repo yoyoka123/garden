@@ -21,9 +21,18 @@ export const CONFIG = {
 
   // AI API 配置
   ai: {
+    // 后端选择: 'doubao' | 'claude-code'
+    backend: 'claude-code',
+
+    // 豆包 API 配置
     url: 'https://ark.cn-beijing.volces.com/api/v3/responses',
     token: '2bce5331-d480-4141-b0dc-23f3d7e5e185',
     model: 'doubao-seed-1-8-251228'
+  },
+
+  // Claude Code Bridge Server 配置
+  claudeCode: {
+    bridgeUrl: 'http://localhost:8002'
   },
 
   // 渲染配置
@@ -45,7 +54,7 @@ export const CONFIG = {
     controls: {
       minPolarAngle: 0.1,
       maxPolarAngle: Math.PI / 2 - 0.1,
-      minDistance: 3,
+      minDistance: 2,
       maxDistance: 20
     }
   },

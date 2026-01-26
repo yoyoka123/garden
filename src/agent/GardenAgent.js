@@ -1,16 +1,19 @@
 /**
  * 花园 Agent 核心
  * 统一处理所有对话和交互
+ * 支持双后端：豆包 API 和 Claude Code
  */
 
 import { AgentContext } from './AgentContext.js';
 import { AgentPromptBuilder } from './AgentPromptBuilder.js';
 import { AgentPrompts } from '../config/prompts/index.js';
+import { CONFIG } from '../config.js';
 
 /**
  * @typedef {Object} AgentConfig
  * @property {string} name - Agent 名称
  * @property {string} personality - 人格描述
+ * @property {'doubao' | 'claude-code'} [backend] - AI 后端类型
  */
 
 /**
@@ -39,16 +42,41 @@ export class GardenAgent {
   /**
    * @param {AgentConfig} config - Agent 配置
    * @param {import('../skills/SkillRegistry.js').SkillRegistry} skillRegistry - Skill 注册中心
-   * @param {import('../ai/AIClient.js').AIClient} aiClient - AI 客户端
+   * @param {import('../ai/AIClient.js').AIClient} aiClient - AI 客户端（豆包）
    * @param {import('./GardenStateProvider.js').GardenStateProvider} [stateProvider] - 状态提供者
+   * @param {import('../ai/ClaudeCodeClient.js').ClaudeCodeClient} [claudeCodeClient] - Claude Code 客户端
    */
-  constructor(config, skillRegistry, aiClient, stateProvider = null) {
+  constructor(config, skillRegistry, aiClient, stateProvider = null, claudeCodeClient = null) {
     this.config = config;
     this.skillRegistry = skillRegistry;
     this.aiClient = aiClient;
+    this.claudeCodeClient = claudeCodeClient;
     this.stateProvider = stateProvider;
     this.context = new AgentContext();
     this.promptBuilder = new AgentPromptBuilder(config);
+
+    // 后端选择：优先使用配置，默认使用豆包
+    this.backend = config.backend || CONFIG.ai?.backend || 'doubao';
+  }
+
+  /**
+   * 获取当前使用的 AI 客户端
+   * @returns {import('../ai/AIClient.js').AIClient | import('../ai/ClaudeCodeClient.js').ClaudeCodeClient}
+   */
+  getActiveClient() {
+    if (this.backend === 'claude-code' && this.claudeCodeClient) {
+      return this.claudeCodeClient;
+    }
+    return this.aiClient;
+  }
+
+  /**
+   * 切换后端
+   * @param {'doubao' | 'claude-code'} backend
+   */
+  setBackend(backend) {
+    this.backend = backend;
+    console.log(`[GardenAgent] Switched to ${backend} backend`);
   }
 
   /**
@@ -59,8 +87,21 @@ export class GardenAgent {
   async process(input) {
     // 0. 每次对话前更新花园全局状态
     if (this.stateProvider) {
-      const snapshot = this.stateProvider.getFlowersByCell();
-      this.context.updateGardenSnapshot(snapshot);
+      const flowerSnapshot = this.stateProvider.getFlowersByCell();
+      const fullSnapshot = this.stateProvider.getSnapshot();
+      this.context.updateGardenSnapshot(flowerSnapshot);
+
+      // 如果使用 Claude Code，同步完整状态（包括装饰物）到 Bridge Server
+      if (this.backend === 'claude-code' && this.claudeCodeClient) {
+        await this.claudeCodeClient.updateState({
+          gold: this.context.gardenState.gold,
+          gardenSnapshot: flowerSnapshot,
+          decorations: fullSnapshot.decorations,
+          decorationsSummary: fullSnapshot.summary.decorations,
+          focusedEntity: this.context.focusedEntity,
+          availableBouquets: this.stateProvider.getAvailableBouquets?.() || []
+        });
+      }
     }
 
     // 1. 更新上下文
@@ -91,15 +132,24 @@ export class GardenAgent {
     const systemPrompt = this.promptBuilder.build(this.context, availableTools);
 
     // 4. 调用 AI（支持工具调用循环）
+    const client = this.getActiveClient();
+
     try {
-      const response = await this.aiClient.chat(
+      // Claude Code 需要额外的上下文
+      const extraContext = this.backend === 'claude-code' ? {
+        focusedEntity: this.context.focusedEntity,
+        gardenSnapshot: this.context.gardenSnapshot
+      } : undefined;
+
+      const response = await client.chat(
         this.context.toAPIMessages(),
         systemPrompt,
-        availableTools
+        availableTools,
+        extraContext
       );
 
       // 5. 解析响应
-      const { text, toolCalls } = this.aiClient.parseResponse(response);
+      const { text, toolCalls } = client.parseResponse(response);
 
       // 6. 执行工具调用
       const toolExecutions = [];
@@ -130,13 +180,13 @@ export class GardenAgent {
         const updatedPrompt = this.promptBuilder.build(this.context, updatedTools);
 
         // 再次调用 AI，让它根据工具结果生成回复
-        const followUpResponse = await this.aiClient.chat(
+        const followUpResponse = await client.chat(
           this.context.toAPIMessages(),
           updatedPrompt,
           [] // 不提供工具，只需要文本回复
         );
 
-        const { text: followUpText } = this.aiClient.parseResponse(followUpResponse);
+        const { text: followUpText } = client.parseResponse(followUpResponse);
         responseText = followUpText;
       }
 

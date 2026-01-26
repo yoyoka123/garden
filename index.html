@@ -841,230 +841,150 @@
     }
 
     /* 右侧聊天侧边栏样式 */
+    /* 直播弹幕风格 - 纯透明悬浮对话 */
     #chat-sidebar {
       position: fixed;
-      top: 0;
-      right: 0;
-      width: 320px;
-      height: 100vh;
-      background: rgba(255, 255, 255, 0.85);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      box-shadow: -4px 0 24px rgba(0, 0, 0, 0.08);
+      top: 50%;
+      right: 20px;
+      transform: translateY(-50%);
+      width: 300px;
+      max-height: 60vh;
+      background: transparent;
       display: flex;
       flex-direction: column;
       z-index: 100;
-      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      pointer-events: none;
     }
 
-    /* 侧边栏收起状态 */
-    #chat-sidebar.collapsed {
-      transform: translateX(260px);
-    }
-
-    /* 展开/收起按钮 */
-    #toggle-chat {
-      position: absolute;
-      left: -24px;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 24px;
-      height: 48px;
-      background: rgba(255, 255, 255, 0.9);
-      border: none;
-      border-radius: 8px 0 0 8px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 12px;
-      color: #666;
-      box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
-      transition: background 0.2s;
-    }
-
-    #toggle-chat:hover {
-      background: #fff;
-    }
-
-    .chat-header {
-      display: flex;
-      align-items: center;
-      padding: 16px;
-      background: linear-gradient(135deg, #4CAF50, #45a049);
-      color: white;
-      min-height: 70px;
-    }
-
-    .chat-header.inactive {
-      background: #9e9e9e;
-    }
-
-    .chat-avatar {
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      background: white;
-      margin-right: 12px;
-      background-size: cover;
-      background-position: center;
-      border: 2px solid rgba(255,255,255,0.5);
-      display: none;
-    }
-
-    .chat-header.active .chat-avatar {
-      display: block;
-    }
-
-    .chat-info {
-      flex: 1;
-    }
-
-    .chat-name {
-      font-size: 16px;
-      font-weight: 600;
-    }
-
-    .chat-status {
-      font-size: 12px;
-      opacity: 0.8;
-    }
-
+    /* 隐藏不需要的元素 */
+    #toggle-chat,
+    .chat-header,
+    .chat-empty,
+    .terminal-dots,
+    .chat-avatar,
     .chat-close {
-      width: 28px;
-      height: 28px;
-      border: none;
-      background: rgba(255,255,255,0.2);
-      color: white;
-      border-radius: 50%;
-      font-size: 18px;
-      cursor: pointer;
-      display: none;
-      align-items: center;
-      justify-content: center;
+      display: none !important;
     }
 
-    .chat-header.active .chat-close {
-      display: flex;
-    }
-
-    .chat-close:hover {
-      background: rgba(255,255,255,0.3);
-    }
-
-    /* 聊天内容区域 - 默认隐藏 */
+    /* 聊天内容区域 */
     .chat-content {
-      display: none;
+      display: flex;
       flex-direction: column;
       flex: 1;
       overflow: hidden;
+      pointer-events: auto;
     }
 
     .chat-content.active {
       display: flex;
     }
 
-    /* 无对话时的提示 */
-    .chat-empty {
+    /* 消息区域 - 完全透明 */
+    .chat-messages {
       flex: 1;
+      padding: 12px 0;
+      overflow-y: auto;
+      background: transparent;
       display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #999;
-      font-size: 14px;
-      background: #f5f5f5;
+      flex-direction: column;
+      align-items: flex-end;
     }
 
-    .chat-empty.hidden {
+    /* 隐藏滚动条 */
+    .chat-messages::-webkit-scrollbar {
+      width: 0;
       display: none;
     }
 
-    .chat-messages {
-      flex: 1;
-      padding: 16px;
-      overflow-y: auto;
-      background: #f5f5f5;
-    }
-
+    /* 弹幕消息样式 */
     .chat-message {
-      max-width: 80%;
-      margin-bottom: 12px;
-      animation: messageIn 0.3s ease;
+      max-width: 100%;
+      margin-bottom: 8px;
+      animation: danmakuIn 0.4s ease-out;
+      display: flex;
+      justify-content: flex-end;
     }
 
-    @keyframes messageIn {
+    @keyframes danmakuIn {
       from {
         opacity: 0;
-        transform: translateY(10px);
+        transform: translateX(20px);
       }
       to {
         opacity: 1;
-        transform: translateY(0);
+        transform: translateX(0);
       }
     }
 
-    .chat-message.flower {
-      margin-right: auto;
-    }
-
-    .chat-message.user {
+    .chat-message.flower,
+    .chat-message.user,
+    .chat-message.system,
+    .chat-message.action {
+      margin-right: 0;
       margin-left: auto;
     }
 
+    /* 弹幕文字样式 - 纯文字带阴影 */
     .chat-bubble {
-      padding: 10px 14px;
-      border-radius: 16px;
+      padding: 4px 10px;
+      border-radius: 4px;
       font-size: 14px;
       line-height: 1.4;
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif;
+      text-align: right;
+      background: transparent;
+      border: none;
+      text-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.8),
+        0 0 8px rgba(0, 0, 0, 0.5);
     }
 
+    /* Agent 回复 - 白色文字 */
     .chat-message.flower .chat-bubble {
-      background: white;
-      color: #333;
-      border-bottom-left-radius: 4px;
+      color: #ffffff;
+      background: transparent;
+      border: none;
     }
 
+    /* 用户消息 - 绿色文字 */
     .chat-message.user .chat-bubble {
-      background: #4CAF50;
-      color: white;
-      border-bottom-right-radius: 4px;
+      color: #7cfc00;
+      background: transparent;
+      border: none;
     }
 
+    /* 系统消息 - 黄色文字 */
     .chat-message.system .chat-bubble {
-      background: #fff3cd;
-      color: #856404;
-      text-align: center;
-      max-width: 100%;
-      margin: 0 auto 12px;
-    }
-
-    .chat-message.action {
-      justify-content: center;
-    }
-
-    .chat-message.action .chat-bubble {
-      background: #e8f4e8;
-      color: #2d5a2d;
-      font-style: italic;
-      text-align: center;
-      max-width: 100%;
-      margin: 0 auto 12px;
+      color: #ffd700;
       font-size: 12px;
-      padding: 6px 12px;
+      background: transparent;
+      border: none;
     }
 
+    /* 操作消息 - 淡紫色文字 */
+    .chat-message.action .chat-bubble {
+      color: #dda0dd;
+      font-size: 12px;
+      font-style: italic;
+      background: transparent;
+      border: none;
+    }
+
+    /* 输入中动画 */
     .chat-typing {
       display: flex;
       gap: 4px;
-      padding: 10px 14px;
+      padding: 4px 10px;
+      justify-content: flex-end;
     }
 
     .chat-typing span {
-      width: 8px;
-      height: 8px;
-      background: #999;
+      width: 5px;
+      height: 5px;
+      background: rgba(255, 255, 255, 0.8);
       border-radius: 50%;
       animation: typing 1.4s infinite;
+      box-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
     }
 
     .chat-typing span:nth-child(2) {
@@ -1076,47 +996,62 @@
     }
 
     @keyframes typing {
-      0%, 60%, 100% { transform: translateY(0); }
-      30% { transform: translateY(-6px); }
+      0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+      30% { transform: translateY(-3px); opacity: 1; }
     }
 
+    /* 输入区域 - 简洁透明 */
     .chat-input-area {
       display: flex;
-      padding: 12px;
-      background: white;
-      border-top: 1px solid #e0e0e0;
+      padding: 8px 0;
+      background: transparent;
       gap: 8px;
+      border: none;
     }
 
     .chat-input-area input {
       flex: 1;
-      padding: 10px 14px;
-      border: 1px solid #ddd;
-      border-radius: 20px;
+      padding: 8px 12px;
+      border: none;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 0;
       font-size: 14px;
       outline: none;
+      background: transparent;
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif;
+      transition: all 0.2s;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    }
+
+    .chat-input-area input::placeholder {
+      color: rgba(255, 255, 255, 0.4);
     }
 
     .chat-input-area input:focus {
-      border-color: #4CAF50;
+      border-bottom-color: rgba(255, 255, 255, 0.6);
     }
 
     .chat-send {
-      padding: 10px 16px;
-      background: #4CAF50;
-      color: white;
-      border: none;
-      border-radius: 20px;
-      font-size: 14px;
+      padding: 6px 12px;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 4px;
+      font-size: 12px;
       cursor: pointer;
+      transition: all 0.2s;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
     }
 
     .chat-send:hover {
-      background: #45a049;
+      color: #ffffff;
+      border-color: rgba(255, 255, 255, 0.6);
     }
 
     .chat-send:disabled {
-      background: #ccc;
+      color: rgba(255, 255, 255, 0.2);
+      border-color: rgba(255, 255, 255, 0.1);
       cursor: not-allowed;
     }
 
@@ -1321,7 +1256,7 @@
       <div class="control-group">
         <label class="control-label">整体缩放</label>
         <div class="control-row">
-          <input type="range" id="garden-scale" min="0.5" max="2" step="0.1" value="1">
+          <input type="range" id="garden-scale" min="0.5" max="1.5" step="0.1" value="1">
           <span class="value-display" id="garden-scale-value">1.0</span>
         </div>
       </div>
@@ -1397,30 +1332,25 @@
     </div>
   </div>
 
-  <!-- 右侧聊天侧边栏 -->
-  <div id="chat-sidebar" class="collapsed">
-    <button id="toggle-chat">◀</button>
-    <div class="chat-header inactive" id="chat-header">
-      <div class="chat-avatar" id="chat-avatar"></div>
-      <div class="chat-info">
-        <div class="chat-name" id="chat-name">无对话对象</div>
-        <div class="chat-status" id="chat-status">点击成熟的花朵开始对话</div>
-      </div>
-      <button class="chat-close" id="chat-close">&times;</button>
+  <!-- 右侧弹幕式对话框 - 纯透明悬浮 -->
+  <div id="chat-sidebar">
+    <!-- 隐藏元素（保留ID供JS引用） -->
+    <button id="toggle-chat" hidden></button>
+    <div id="chat-header" hidden>
+      <div id="chat-avatar"></div>
+      <div id="chat-name"></div>
+      <div id="chat-status"></div>
+      <button id="chat-close"></button>
     </div>
+    <div id="chat-empty" hidden></div>
 
-    <!-- 无对话时显示 -->
-    <div class="chat-empty" id="chat-empty">
-      <span>🌸 点击花朵开始聊天</span>
-    </div>
-
-    <!-- 有对话时显示 -->
-    <div class="chat-content" id="chat-content">
+    <!-- 弹幕消息区 -->
+    <div class="chat-content active" id="chat-content">
       <div class="chat-messages" id="chat-messages">
         <!-- 消息会动态添加 -->
       </div>
       <div class="chat-input-area">
-        <input type="text" id="chat-input" placeholder="输入消息...">
+        <input type="text" id="chat-input" placeholder="说点什么...">
         <button class="chat-send" id="chat-send">发送</button>
       </div>
     </div>

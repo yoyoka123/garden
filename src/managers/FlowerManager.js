@@ -60,8 +60,8 @@ export class FlowerManager {
     // 底部为轴点
     sprite.center.set(0.5, 0);
 
-    // 随机大小
-    const scale = 0.5 + Math.random() * 0.5;
+    // 随机大小（缩小以适配草地比例）
+    const scale = 0.15 + Math.random() * 0.15;
     sprite.scale.set(scale, scale * 1.5, 1);
 
     // 位置
