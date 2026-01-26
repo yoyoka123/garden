@@ -29,6 +29,13 @@ import { FlowerDescriptor } from './src/entities/descriptors/FlowerDescriptor.js
 import { InteractionManager } from './src/interactions/InteractionManager.js';
 import { InputRouter } from './src/interactions/InputRouter.js';
 import { aiClient } from './src/ai/AIClient.js';
+import { claudeCodeClient } from './src/ai/ClaudeCodeClient.js';
+
+// 新模块导入
+import { stateManager } from './src/persistence/StateManager.js';
+import { interactionQueue } from './src/interactions/InteractionQueue.js';
+import { motionController } from './src/motion/MotionController.js';
+import { throttle } from './src/utils/timing.js';
 
 // ============================================
 // 花束目录（花朵 + 树木）
@@ -143,20 +150,50 @@ const GRASS_CATALOG = {
   '草地5': { url: 'assets/grass/grass4.png', countPerCell: 1 }
 };
 
-// 装饰物目录
+// 装饰物目录（支持自定义运动配置）
+// 格式: { url, configId?, motions? }
 const DECORATION_CATALOG = {
-  '小猫': 'assets/decorations/cat.png',
-  '小猫2': 'assets/decorations/cat2.png',
-  '小狗': 'assets/decorations/dog2.png',
-  '小狗2': 'assets/decorations/dog5.png',
-  '蝴蝶1': 'assets/decorations/butterfly1.png',
-  '蝴蝶2': 'assets/decorations/butterfly2.png',
-  '蝴蝶画': 'assets/decorations/butterflydraw.png',
-  '粉蝶': 'assets/decorations/butterpink.png',
-  '云朵': 'assets/decorations/cloud.png',
-  '云朵2': 'assets/decorations/cloud1.png',
-  '云朵3': 'assets/decorations/cloud2.png',
-  '云彩画': 'assets/decorations/clouddraw.png'
+  // 普通装饰物
+  '小猫': { url: 'assets/decorations/cat.png', configId: 'cat' },
+  '小猫2': { url: 'assets/decorations/cat2.png' },
+  '小狗': { url: 'assets/decorations/dog2.png' },
+  '小狗2': { url: 'assets/decorations/dog5.png' },
+
+  // 蝴蝶 - 使用自定义飞舞运动（降低速度和幅度）
+  '蝴蝶1': {
+    url: 'assets/decorations/butterfly1.png',
+    configId: 'butterfly',
+    motions: [
+      { id: 'flutter', trigger: 'always', type: 'oscillate', config: { property: 'y', amplitude: 0.08, frequency: 0.8 } },
+      { id: 'wander', trigger: 'always', type: 'orbit', config: { radius: 0.15, plane: 'xz', duration: 8000 } }
+    ]
+  },
+  '蝴蝶2': {
+    url: 'assets/decorations/butterfly2.png',
+    motions: [
+      { id: 'flutter', trigger: 'always', type: 'oscillate', config: { property: 'y', amplitude: 0.1, frequency: 0.6 } }
+    ]
+  },
+  '蝴蝶画': { url: 'assets/decorations/butterflydraw.png' },
+  '粉蝶': {
+    url: 'assets/decorations/butterpink.png',
+    motions: [
+      { id: 'flutter', trigger: 'always', type: 'oscillate', config: { property: 'y', amplitude: 0.06, frequency: 1.0 } },
+      { id: 'sway', trigger: 'always', type: 'oscillate', config: { property: 'rotation', amplitude: 0.15, frequency: 0.5 } }
+    ]
+  },
+
+  // 云朵 - 缓慢飘动
+  '云朵': {
+    url: 'assets/decorations/cloud.png',
+    motions: [
+      { id: 'float', trigger: 'always', type: 'oscillate', config: { property: 'x', amplitude: 0.2, frequency: 0.05 } },
+      { id: 'bob', trigger: 'always', type: 'oscillate', config: { property: 'y', amplitude: 0.05, frequency: 0.08 } }
+    ]
+  },
+  '云朵2': { url: 'assets/decorations/cloud1.png' },
+  '云朵3': { url: 'assets/decorations/cloud2.png' },
+  '云彩画': { url: 'assets/decorations/clouddraw.png' }
 };
 
 // ============================================
@@ -168,8 +205,8 @@ const grid = new Grid();
 const flowerManager = new FlowerManager(grid, sceneSetup.gardenGroup, BOUQUET_CATALOG);
 const decorationManager = new DecorationManager(sceneSetup.scene);
 
-// 用于装饰物拖拽的无限平面 (y = 1)
-const decorationDragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -1);
+// 用于装饰物拖拽的无限平面 (y = 0.3，更接近地面)
+const decorationDragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.3);
 
 // ============================================
 // Agent-Skill 系统初始化
@@ -181,12 +218,12 @@ const entityRegistry = new EntityRegistry();
 const flowerDescriptor = new FlowerDescriptor(BOUQUET_CATALOG);
 entityRegistry.register(flowerDescriptor);
 
-// 创建花园状态提供者
+// 创建花园状态提供者（包含花朵和装饰物感知）
 const stateProvider = new GardenStateProvider(
-  flowerManager, gameState, grid, BOUQUET_CATALOG
+  flowerManager, gameState, grid, BOUQUET_CATALOG, decorationManager
 );
 
-// 创建花园 Agent
+// 创建花园 Agent（支持双后端：豆包 / Claude Code）
 const gardenAgent = new GardenAgent(
   {
     name: '花园精灵',
@@ -194,7 +231,8 @@ const gardenAgent = new GardenAgent(
   },
   skillRegistry,
   aiClient,
-  stateProvider
+  stateProvider,
+  claudeCodeClient  // Claude Code 桥接客户端
 );
 
 // 注册 Skills
@@ -217,6 +255,14 @@ const inputRouter = new InputRouter(gardenAgent, interactionManager);
 
 // 创建聊天 UI 并连接到 InputRouter
 const chatUI = new ChatUI(BOUQUET_CATALOG, inputRouter);
+
+// 初始化状态管理器
+stateManager.setManagers({
+  flowerManager,
+  decorationManager,
+  gameState,
+  grid
+});
 
 // Raycaster
 const raycaster = new THREE.Raycaster();
@@ -304,7 +350,7 @@ function showHarvestSuccessOverlay(flowerData, reason) {
 }
 
 // ============================================
-// 点击交互
+// 点击交互（使用 InteractionQueue 防抖）
 // ============================================
 async function onCanvasClick(event) {
   if (event.shiftKey) return;
@@ -323,38 +369,37 @@ async function onCanvasClick(event) {
       flowerTop.y += flowerData.sprite.scale.y;
       const screenPos = toScreenPosition(flowerTop, sceneSetup.camera, sceneSetup.domElement);
 
-      if (flowerData.isHarvestable) {
+      const interactionType = flowerData.isHarvestable ? 'click' : 'click_growing';
+
+      // 使用交互队列防抖处理
+      interactionQueue.enqueue(interactionType, { flowerData, screenPos }, async (data) => {
+        // 立即显示动作消息和 typing 动画
+        chatUI.startInteraction(interactionType, data.flowerData);
+
         // 更新花园状态
         gardenAgent.updateGardenState({
           gold: gameState.gold,
           flowerCount: flowerManager.getPlantedCount()
         });
 
-        // 通过 InputRouter 处理交互，让 Agent 生成回复
-        const result = await inputRouter.handleDirectInteraction(
-          'click', 'flower', flowerData, screenPos
-        );
+        try {
+          // 通过 InputRouter 处理交互，让 Agent 生成回复
+          const result = await inputRouter.handleDirectInteraction(
+            interactionType, 'flower', data.flowerData, data.screenPos
+          );
 
-        if (result && result.output) {
-          // 往对话中插入交互事件和 Agent 回复
-          chatUI.appendInteraction('click', flowerData, result.descriptor, result.output);
+          // LLM 返回后显示回复
+          if (result && result.output) {
+            chatUI.completeInteraction(result.output);
+          } else {
+            chatUI.failInteraction('无法获取回复');
+          }
+          return result;
+        } catch (error) {
+          chatUI.failInteraction(`出错了：${error.message}`);
+          throw error;
         }
-      } else {
-        // 更新花园状态
-        gardenAgent.updateGardenState({
-          gold: gameState.gold,
-          flowerCount: flowerManager.getPlantedCount()
-        });
-
-        // 通过 InputRouter 处理生长中点击
-        const result = await inputRouter.handleDirectInteraction(
-          'click_growing', 'flower', flowerData, screenPos
-        );
-
-        if (result && result.output) {
-          chatUI.appendInteraction('click_growing', flowerData, result.descriptor, result.output);
-        }
-      }
+      });
     }
   }
 }
@@ -395,13 +440,23 @@ async function tryPlantAtPosition(clientX, clientY) {
         flowerTop.y += firstFlower.sprite.scale.y;
         const screenPos = toScreenPosition(flowerTop, sceneSetup.camera, sceneSetup.domElement);
 
-        // 通过 InputRouter 处理种植事件
-        const result = await inputRouter.handleDirectInteraction(
-          'plant', 'flower', firstFlower, screenPos
-        );
+        // 立即显示动作消息和 typing 动画
+        chatUI.startInteraction('plant', firstFlower);
 
-        if (result && result.output) {
-          chatUI.appendInteraction('plant', firstFlower, result.descriptor, result.output);
+        try {
+          // 通过 InputRouter 处理种植事件
+          const result = await inputRouter.handleDirectInteraction(
+            'plant', 'flower', firstFlower, screenPos
+          );
+
+          // LLM 返回后显示回复
+          if (result && result.output) {
+            chatUI.completeInteraction(result.output);
+          } else {
+            chatUI.failInteraction('无法获取回复');
+          }
+        } catch (error) {
+          chatUI.failInteraction(`出错了：${error.message}`);
         }
       }
     }
@@ -416,9 +471,14 @@ sceneSetup.domElement.addEventListener('mousedown', (event) => {
   }
 });
 
+// 使用节流限制种植频率
+const throttledPlant = throttle((clientX, clientY) => {
+  tryPlantAtPosition(clientX, clientY);
+}, 100);
+
 sceneSetup.domElement.addEventListener('mousemove', (event) => {
   if (isPlanting && event.shiftKey) {
-    tryPlantAtPosition(event.clientX, event.clientY);
+    throttledPlant(event.clientX, event.clientY);
   }
 });
 
@@ -441,7 +501,7 @@ window.addEventListener('keyup', (e) => {
 // ============================================
 // 装饰物交互
 // ============================================
-let pendingDecorationImage = null;
+let pendingDecoration = null; // { url, configId?, motions? }
 
 sceneSetup.domElement.addEventListener('mousedown', (e) => {
   if (e.button !== 0 || e.shiftKey) return;
@@ -450,15 +510,19 @@ sceneSetup.domElement.addEventListener('mousedown', (e) => {
   raycaster.setFromCamera(mouse, sceneSetup.camera);
 
   // 放置装饰物
-  if (pendingDecorationImage) {
+  if (pendingDecoration) {
     // 使用无限平面计算交点，允许放置到任意位置
     const intersectPoint = new THREE.Vector3();
     const position = raycaster.ray.intersectPlane(decorationDragPlane, intersectPoint)
-      ? new THREE.Vector3(intersectPoint.x, 1, intersectPoint.z)
-      : new THREE.Vector3(0, 1, 0);
+      ? new THREE.Vector3(intersectPoint.x, 0.3, intersectPoint.z)
+      : new THREE.Vector3(0, 0.3, 0);
 
-    decorationManager.create(pendingDecorationImage, position);
-    pendingDecorationImage = null;
+    // 使用配置创建装饰物（支持自定义运动）
+    decorationManager.create(pendingDecoration.url, position, {
+      configId: pendingDecoration.configId,
+      motions: pendingDecoration.motions
+    });
+    pendingDecoration = null;
 
     const uploadArea = getElement('decoration-upload-area');
     const preview = getElement('decoration-preview');
@@ -480,17 +544,20 @@ sceneSetup.domElement.addEventListener('mousedown', (e) => {
   }
 });
 
-sceneSetup.domElement.addEventListener('mousemove', (e) => {
-  if (!decorationManager.isDragging) return;
-
+// 使用节流限制装饰物拖拽更新频率
+const throttledDecorationDrag = throttle((e) => {
   const mouse = getMouseNDC(e, sceneSetup.domElement);
   raycaster.setFromCamera(mouse, sceneSetup.camera);
 
-  // 使用无限平面计算交点，允许拖拽到任意位置
   const intersectPoint = new THREE.Vector3();
   if (raycaster.ray.intersectPlane(decorationDragPlane, intersectPoint)) {
     decorationManager.updateDragPosition(intersectPoint.x, intersectPoint.z);
   }
+}, 16); // ~60fps
+
+sceneSetup.domElement.addEventListener('mousemove', (e) => {
+  if (!decorationManager.isDragging) return;
+  throttledDecorationDrag(e);
 });
 
 window.addEventListener('mouseup', () => {
@@ -813,7 +880,7 @@ function setupDecorationUpload() {
       if (!file) return;
 
       const imageData = await readFileAsDataUrl(file);
-      pendingDecorationImage = imageData;
+      pendingDecoration = { url: imageData };
 
       if (previewImage) previewImage.src = imageData;
       if (preview) preview.style.display = 'block';
@@ -826,8 +893,8 @@ function setupDecorationUpload() {
 
   // ESC 取消
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && pendingDecorationImage) {
-      pendingDecorationImage = null;
+    if (e.key === 'Escape' && pendingDecoration) {
+      pendingDecoration = null;
       if (preview) preview.style.display = 'none';
       if (uploadArea) uploadArea.classList.remove('active');
       eventBus.emit(Events.STATUS_MESSAGE, { message: '已取消放置装饰物' });
@@ -844,35 +911,59 @@ function updateDecorationUI() {
 
   if (!list) return;
 
+  // 辅助函数：获取装饰物的 URL
+  const getDecorationUrl = (data) => {
+    if (typeof data === 'string') return data;
+    return data.url;
+  };
+
+  // 辅助函数：检查是否有运动配置
+  const hasMotion = (data) => {
+    if (typeof data === 'string') return false;
+    return !!(data.motions?.length || data.configId);
+  };
+
   if (keys.length === 0) {
     list.innerHTML = '<div class="empty-list">暂无装饰物</div>';
   } else {
-    list.innerHTML = keys.map(key => `
-      <div class="bouquet-item decoration-item" data-key="${key}">
-        <img class="bouquet-thumb" src="${DECORATION_CATALOG[key]}" alt="${key}">
-        <div class="bouquet-info">
-          <div class="bouquet-name">${key}</div>
+    list.innerHTML = keys.map(key => {
+      const data = DECORATION_CATALOG[key];
+      const url = getDecorationUrl(data);
+      const animated = hasMotion(data);
+      return `
+        <div class="bouquet-item decoration-item${animated ? ' animated' : ''}" data-key="${key}">
+          <img class="bouquet-thumb" src="${url}" alt="${key}">
+          <div class="bouquet-info">
+            <div class="bouquet-name">${key}${animated ? ' ✨' : ''}</div>
+          </div>
         </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
 
     // 点击选择装饰物
     list.querySelectorAll('.decoration-item').forEach(item => {
       item.addEventListener('click', async () => {
         const key = item.dataset.key;
-        const url = DECORATION_CATALOG[key];
-        pendingDecorationImage = url;
+        const data = DECORATION_CATALOG[key];
+
+        // 转换为统一格式
+        if (typeof data === 'string') {
+          pendingDecoration = { url: data };
+        } else {
+          pendingDecoration = { ...data };
+        }
 
         const preview = getElement('decoration-preview');
         const previewImage = getElement('decoration-preview-image');
-        if (previewImage) previewImage.src = url;
+        if (previewImage) previewImage.src = pendingDecoration.url;
         if (preview) preview.style.display = 'block';
 
         // 高亮选中
         list.querySelectorAll('.decoration-item').forEach(el => el.classList.remove('active'));
         item.classList.add('active');
 
-        eventBus.emit(Events.STATUS_MESSAGE, { message: `点击场景放置 ${key}` });
+        const motionHint = hasMotion(data) ? '（带动画）' : '';
+        eventBus.emit(Events.STATUS_MESSAGE, { message: `点击场景放置 ${key}${motionHint}` });
       });
     });
   }
@@ -988,7 +1079,16 @@ function updateGrassUI() {
 // ============================================
 // 动画循环
 // ============================================
+let lastTime = 0;
+
 animator.add((time) => {
+  // 计算 deltaTime
+  const deltaTime = lastTime > 0 ? time - lastTime : 0.016;
+  lastTime = time;
+
+  // 更新运动控制器（新模块）
+  motionController.update(deltaTime, time);
+
   // 花朵动画
   flowerManager.updateAnimation(time, gameState.windSway, gameState.swaySpeed);
 
@@ -1022,16 +1122,75 @@ async function init() {
   // 初始化 3D 草地（从 GRASS_CATALOG 加载）
   await reloadGrass();
 
+  // 尝试加载保存的状态
+  const savedState = stateManager.load();
+  if (savedState) {
+    console.log('正在恢复保存的花园状态...');
+
+    // 恢复游戏状态
+    stateManager.restoreGameState(savedState.gameState, gameState);
+
+    // 恢复花朵
+    if (savedState.flowers && savedState.flowers.length > 0) {
+      await stateManager.restoreFlowers(savedState.flowers, flowerManager, BOUQUET_CATALOG);
+    }
+
+    // 恢复装饰物（需要从 DECORATION_CATALOG 查找 motions 配置）
+    if (savedState.decorations && savedState.decorations.length > 0) {
+      // 根据 textureUrl 查找 motions 配置
+      const findMotionsByUrl = (url) => {
+        for (const data of Object.values(DECORATION_CATALOG)) {
+          if (typeof data === 'object' && data.url === url && data.motions) {
+            return data.motions;
+          }
+        }
+        return null;
+      };
+
+      // 为每个装饰物添加 motions 配置
+      const decorationsWithMotions = savedState.decorations.map(dec => ({
+        ...dec,
+        motions: findMotionsByUrl(dec.textureUrl)
+      }));
+
+      await stateManager.restoreDecorations(decorationsWithMotions, decorationManager);
+    }
+
+    console.log(`已恢复 ${savedState.flowers?.length || 0} 朵花和 ${savedState.decorations?.length || 0} 个装饰物`);
+  }
+
+  // 启动自动保存（每 30 秒）
+  stateManager.startAutoSave();
+
   // 初始化 UI
   setupUIControls();
   updateBouquetUI();
   updateGrassUI();
   updateDecorationUI();
 
+  // 更新已种植数量显示
+  uiManager.updatePlantedCount(flowerManager.getPlantedCount());
+
   // 启动动画
   animator.start();
 
+  // 暴露调试对象到 window（方便控制台调试）
+  window.garden = {
+    stateManager,
+    flowerManager,
+    decorationManager,
+    gameState,
+    stateProvider,
+    // 手动保存
+    save: () => stateManager.save(),
+    // 查看保存的数据
+    getSavedData: () => JSON.parse(localStorage.getItem('garden_garden_gardenState')),
+    // 查看当前状态
+    getSnapshot: () => stateProvider.getSnapshot()
+  };
+
   console.log('🌻 语义农场已启动');
+  console.log('💡 调试: 在控制台使用 window.garden 访问调试工具');
 }
 
 init();

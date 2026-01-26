@@ -134,7 +134,7 @@ ${this.config.personality}`;
     // 花朵列表（按格子）
     if (snapshot.cellMap) {
       parts.push(`\n${gardenState.flowersTitle}`);
-      for (const [key, flowers] of snapshot.cellMap) {
+      for (const [key, flowers] of Object.entries(snapshot.cellMap)) {
         const [col, row] = key.split(',');
         const cellLabel = `${gardenState.cellPrefix}(${col},${row})`;
 

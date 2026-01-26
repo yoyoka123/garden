@@ -85,7 +85,47 @@ export class AIClient {
       }
     }
 
+    // 解析文本中的 <|FunctionCallBegin|>...<|FunctionCallEnd|> 格式
+    const { cleanText, extractedCalls } = this._extractInlineToolCalls(responseText);
+    responseText = cleanText;
+    toolCalls.push(...extractedCalls);
+
     return { text: responseText, toolCalls };
+  }
+
+  /**
+   * 从文本中提取内联的工具调用
+   * 豆包模型有时会在文本中返回 <|FunctionCallBegin|>...<|FunctionCallEnd|> 格式
+   * @param {string} text - 原始文本
+   * @returns {{cleanText: string, extractedCalls: Object[]}}
+   */
+  _extractInlineToolCalls(text) {
+    const extractedCalls = [];
+    const pattern = /<\|FunctionCallBegin\|>([\s\S]*?)<\|FunctionCallEnd\|>/g;
+
+    let cleanText = text.replace(pattern, (match, jsonStr) => {
+      try {
+        const calls = JSON.parse(jsonStr.trim());
+        const callArray = Array.isArray(calls) ? calls : [calls];
+
+        for (const call of callArray) {
+          if (call.name) {
+            extractedCalls.push({
+              name: call.name,
+              arguments: call.parameters || call.arguments || {}
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('[AIClient] 解析内联工具调用失败:', e.message);
+      }
+      return ''; // 从文本中移除
+    });
+
+    // 清理多余的空白
+    cleanText = cleanText.trim();
+
+    return { cleanText, extractedCalls };
   }
 }
 

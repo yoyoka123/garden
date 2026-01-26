@@ -103,6 +103,7 @@ export const Events = {
   DECORATION_ADDED: 'decoration:added',
   DECORATION_REMOVED: 'decoration:removed',
   DECORATION_MOVED: 'decoration:moved',
+  DECORATION_INTERACTION: 'decoration:interaction',
 
   // 地皮事件
   GROUND_TEXTURE_CHANGED: 'ground:textureChanged',
@@ -119,5 +120,14 @@ export const Events = {
   AGENT_TOOL_EXECUTED: 'agent:toolExecuted',
 
   // 实体交互事件
-  ENTITY_INTERACTION: 'entity:interaction'
+  ENTITY_INTERACTION: 'entity:interaction',
+
+  // 实体生命周期事件
+  ENTITY_ADDED: 'entity:added',
+  ENTITY_REMOVED: 'entity:removed',
+
+  // 运动事件
+  MOTION_STARTED: 'motion:started',
+  MOTION_COMPLETED: 'motion:completed',
+  MOTION_CANCELLED: 'motion:cancelled'
 };
