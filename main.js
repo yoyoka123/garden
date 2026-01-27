@@ -19,17 +19,17 @@ import { removeBackgroundFromDataUrl } from './src/utils/image-process.js';
 import { readFileAsDataUrl, getElement } from './src/utils/dom-helpers.js';
 
 // Agent-Skill 架构导入
-import { GardenAgent } from './src/agent/GardenAgent.js';
-import { GardenStateProvider } from './src/agent/GardenStateProvider.js';
-import { SkillRegistry } from './src/skills/SkillRegistry.js';
-import { HarvestSkill } from './src/skills/HarvestSkill.js';
-import { GardenSkill } from './src/skills/GardenSkill.js';
-import { EntityRegistry } from './src/entities/EntityRegistry.js';
-import { FlowerDescriptor } from './src/entities/descriptors/FlowerDescriptor.js';
-import { InteractionManager } from './src/interactions/InteractionManager.js';
-import { InputRouter } from './src/interactions/InputRouter.js';
-import { aiClient } from './src/ai/AIClient.js';
-import { claudeCodeClient } from './src/ai/ClaudeCodeClient.js';
+import { GardenAgent } from './src/agent/GardenAgent.js?v=2';
+import { GardenStateProvider } from './src/agent/GardenStateProvider.js?v=2';
+import { SkillRegistry } from './src/skills/SkillRegistry.js?v=2';
+import { HarvestSkill } from './src/skills/HarvestSkill.js?v=2';
+import { GardenSkill } from './src/skills/GardenSkill.js?v=2';
+import { EntityRegistry } from './src/entities/EntityRegistry.js?v=2';
+import { FlowerDescriptor } from './src/entities/descriptors/FlowerDescriptor.js?v=2';
+import { InteractionManager } from './src/interactions/InteractionManager.js?v=2';
+import { InputRouter } from './src/interactions/InputRouter.js?v=2';
+import { aiClient } from './src/ai/AIClient.js?v=2';
+import { claudeCodeClient } from './src/ai/ClaudeCodeClient.js?v=2';
 
 // 新模块导入
 import { stateManager } from './src/persistence/StateManager.js';
@@ -383,10 +383,23 @@ async function onCanvasClick(event) {
           flowerCount: flowerManager.getPlantedCount()
         });
 
+        // 尝试获取该花朵对应日期的回忆
+        // 假设年份固定为 2026
+        const month = data.flowerData.cellCol + 1;
+        const day = data.flowerData.cellRow + 1;
+        const dateStr = `2026-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const memory = gameState.getMemory(dateStr);
+        const context = memory ? { memory, date: dateStr } : null;
+
+        if (context) {
+          console.log(`[Interaction] Found memory for ${dateStr}:`, memory);
+        }
+
         try {
           // 通过 InputRouter 处理交互，让 Agent 生成回复
+          // 传入 context (包含 memory)
           const result = await inputRouter.handleDirectInteraction(
-            interactionType, 'flower', data.flowerData, data.screenPos
+            interactionType, 'flower', data.flowerData, data.screenPos, context
           );
 
           // LLM 返回后显示回复
@@ -660,6 +673,431 @@ function setupUIControls() {
 
   // 装饰物上传
   setupDecorationUpload();
+
+  // 剧情回忆生成
+  setupMemoryGenerator();
+
+  // 地面样式控制
+  setupGroundStyleControl();
+
+  // 年度批量生成
+  setupBatchGenerator();
+}
+
+// ============================================
+// 年度批量生成
+// ============================================
+function setupBatchGenerator() {
+  const themeInput = getElement('batch-theme');
+  const countInput = getElement('batch-count');
+  const countVal = getElement('batch-count-val');
+  const generateBtn = getElement('generate-batch');
+  const previewArea = getElement('batch-preview');
+  const contentArea = getElement('batch-content');
+  const saveBtn = getElement('save-batch');
+  const cancelBtn = getElement('cancel-batch');
+
+  // 情绪花束映射 (复用)
+  const SENTIMENT_BOUQUETS = {
+    happy: ['粉花', '红花', '红花2', '红花3', '花朵1', '花朵2'],
+    calm: ['蓝花', '绿树2', '绿树3', '小树', '大树'],
+    sad: ['紫花', '紫兰1', '紫兰2', '秋花', '秋花2']
+  };
+
+  let currentBatchData = null; // Array of { month, sentiment, summary }
+
+  if (countInput && countVal) {
+    countInput.addEventListener('input', (e) => countVal.textContent = e.target.value);
+  }
+
+  if (generateBtn) {
+    generateBtn.addEventListener('click', async () => {
+      const theme = themeInput.value.trim() || '平凡而美好的一年';
+      
+      generateBtn.disabled = true;
+      generateBtn.textContent = '规划中...';
+      eventBus.emit(Events.STATUS_MESSAGE, { message: '正在生成全年情绪规划...' });
+
+      try {
+        const systemPrompt = `你是一个情感规划师。请基于用户提供的年度主题，为2026年的12个月份分别生成一个情绪基调和简短的一句话总结。
+请直接返回一个 JSON 数组（包含12个对象），不要包含 markdown 或其他文字。
+JSON 格式：
+[
+  { "month": 1, "sentiment": "happy"|"calm"|"sad", "summary": "简短总结" },
+  ... (共12个)
+]
+sentiment 只能是 happy, calm, sad 其中之一。`;
+
+        const userPrompt = `年度主题：${theme}`;
+
+        const response = await aiClient.sendMessage([
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ]);
+
+        let content = response.output;
+        const jsonMatch = content.match(/\[[\s\S]*\]/);
+        if (jsonMatch) content = jsonMatch[0];
+
+        try {
+          const data = JSON.parse(content);
+          if (Array.isArray(data) && data.length > 0) {
+            currentBatchData = data;
+            
+            // 渲染预览
+            previewArea.style.display = 'block';
+            contentArea.innerHTML = data.map(item => {
+              const sentimentMap = { happy: '🌸', calm: '🌿', sad: '🍂' };
+              const colorMap = { happy: '#E91E63', calm: '#4CAF50', sad: '#FF9800' };
+              return `
+                <div style="margin-bottom: 6px; padding: 4px; border-bottom: 1px dashed #eee;">
+                  <span style="font-weight: bold; color: #333;">${item.month}月</span> 
+                  <span style="color: ${colorMap[item.sentiment] || '#666'}">${sentimentMap[item.sentiment] || ''}</span>
+                  <span style="color: #666;">${item.summary}</span>
+                </div>
+              `;
+            }).join('');
+            
+            eventBus.emit(Events.STATUS_MESSAGE, { message: '生成成功，准备种植' });
+          } else {
+            throw new Error('数据格式不正确');
+          }
+        } catch (e) {
+          console.error('JSON Parse Error:', e);
+          alert('生成数据解析失败，请重试');
+        }
+
+      } catch (error) {
+        console.error('Batch Generation Error:', error);
+        alert('生成失败: ' + error.message);
+      } finally {
+        generateBtn.disabled = false;
+        generateBtn.textContent = '生成全年规划 (AI)';
+      }
+    });
+  }
+
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async () => {
+      if (!currentBatchData) return;
+
+      const itemsPerMonth = parseInt(countInput.value) || 3;
+      const year = 2026;
+      let totalPlanted = 0;
+
+      // 获取花朵大小设置（复用剧情回忆的设置，或者使用默认值）
+      const sizeInput = getElement('memory-flower-size');
+      const scale = sizeInput ? parseFloat(sizeInput.value) : 5.0;
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = '种植中...';
+
+      // 遍历每个月数据
+      for (const item of currentBatchData) {
+        const monthIndex = item.month - 1; // 0-11
+        const possibleBouquets = SENTIMENT_BOUQUETS[item.sentiment] || SENTIMENT_BOUQUETS.calm;
+        
+        // 在该月随机选 itemsPerMonth 个格子
+        const usedDays = new Set();
+        
+        for (let i = 0; i < itemsPerMonth; i++) {
+          // 随机挑选一天 (0-30，避开开头几天以免显得太满，或者完全随机)
+          let dayIndex;
+          let attempts = 0;
+          do {
+            dayIndex = Math.floor(Math.random() * 30); // 0-29
+            attempts++;
+          } while ((usedDays.has(dayIndex) || !grid.getCell(monthIndex, dayIndex)?.isEmpty()) && attempts < 10);
+          
+          if (attempts >= 10) continue; // 找不到空格子就跳过
+          usedDays.add(dayIndex);
+
+          // 选花
+          const bouquet = possibleBouquets[Math.floor(Math.random() * possibleBouquets.length)];
+          
+          if (BOUQUET_CATALOG[bouquet]) {
+            // 种植 (3-5朵)
+            const count = 3 + Math.floor(Math.random() * 3);
+            await flowerManager.plantBouquetInCell(monthIndex, dayIndex, bouquet, count, scale);
+            
+            // 保存 Memory
+            const dateStr = `${year}-${String(item.month).padStart(2, '0')}-${String(dayIndex + 1).padStart(2, '0')}`;
+            gameState.addMemory(dateStr, [
+              { sender: 'System', message: `【${item.sentiment}】${item.summary}` }
+            ]);
+            totalPlanted++;
+          }
+        }
+      }
+
+      stateManager.save();
+      eventBus.emit(Events.STATUS_MESSAGE, { message: `批量种植完成！共种下 ${totalPlanted} 处花丛` });
+      
+      previewArea.style.display = 'none';
+      saveBtn.disabled = false;
+      saveBtn.textContent = '保存并种植';
+      currentBatchData = null;
+    });
+  }
+
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', () => {
+      previewArea.style.display = 'none';
+      currentBatchData = null;
+    });
+  }
+}
+
+// ============================================
+// 地面样式控制
+// ============================================
+function setupGroundStyleControl() {
+  const colorPicker = getElement('ground-color-picker');
+  const colorText = getElement('ground-color-text');
+  const presets = document.querySelectorAll('.color-preset');
+
+  const updateColor = (color) => {
+    if (colorPicker) colorPicker.value = color;
+    if (colorText) colorText.value = color;
+    sceneSetup.setGroundColor(color);
+  };
+
+  if (colorPicker) {
+    colorPicker.addEventListener('input', (e) => {
+      updateColor(e.target.value);
+    });
+  }
+
+  if (colorText) {
+    colorText.addEventListener('change', (e) => {
+      let color = e.target.value;
+      if (!color.startsWith('#')) color = '#' + color;
+      if (/^#[0-9A-Fa-f]{6}$/.test(color)) {
+        updateColor(color);
+      }
+    });
+  }
+
+  presets.forEach(preset => {
+    preset.addEventListener('click', () => {
+      const color = preset.dataset.color;
+      updateColor(color);
+    });
+  });
+}
+
+// ============================================
+// 剧情回忆生成
+// ============================================
+function setupMemoryGenerator() {
+  const dateInput = getElement('memory-date');
+  const promptInput = getElement('memory-prompt');
+  const generateBtn = getElement('generate-memory');
+  const previewArea = getElement('memory-preview');
+  const contentArea = getElement('memory-content');
+  const saveBtn = getElement('save-memory');
+  const cancelBtn = getElement('cancel-memory');
+  
+  // 参数调节器
+  const sizeInput = getElement('memory-flower-size');
+  const sizeVal = getElement('memory-flower-size-val');
+  const countInput = getElement('memory-flower-count');
+  const countVal = getElement('memory-flower-count-val');
+
+  // 绑定滑块数值显示
+  if (sizeInput && sizeVal) {
+    sizeInput.addEventListener('input', (e) => sizeVal.textContent = parseFloat(e.target.value).toFixed(1));
+  }
+  if (countInput && countVal) {
+    countInput.addEventListener('input', (e) => countVal.textContent = e.target.value);
+  }
+
+  let currentMemory = null; // { sentiment, chat_log }
+
+  // 情绪对应的花束映射
+  const SENTIMENT_BOUQUETS = {
+    happy: ['粉花', '红花', '红花2', '红花3', '花朵1', '花朵2'],
+    calm: ['蓝花', '绿树2', '绿树3', '小树', '大树'],
+    sad: ['紫花', '紫兰1', '紫兰2', '秋花', '秋花2']
+  };
+
+  if (generateBtn) {
+    generateBtn.addEventListener('click', async () => {
+      const date = dateInput.value;
+      const prompt = promptInput.value.trim();
+
+      if (!date) {
+        alert('请选择日期');
+        return;
+      }
+      if (!prompt) {
+        alert('请输入剧情设定');
+        return;
+      }
+
+      generateBtn.disabled = true;
+      generateBtn.textContent = '生成中...';
+      eventBus.emit(Events.STATUS_MESSAGE, { message: '正在分析情绪并生成回忆...' });
+
+      try {
+        // 构建提示词
+        const systemPrompt = `你是一个创意写作助手。请基于用户的设定，生成一段发生在 ${date} 的对话记录，并分析这段对话的整体情绪基调。
+请直接返回一个 JSON 对象，不要包含任何 Markdown 标记（如 \`\`\`json）、代码块或额外解释，只返回纯 JSON 字符串。
+JSON 格式如下：
+{
+  "sentiment": "happy" | "calm" | "sad", // 整体情绪，只能是 happy(愉快/热烈), calm(平静/温馨), sad(难过/深沉) 这三个值之一
+  "chat_log": [
+    {"sender": "发送者名字", "message": "对话内容"},
+    ...
+  ]
+}`;
+
+        const userPrompt = `设定：${prompt}`;
+
+        // 调用 AI
+        const history = [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ];
+
+        const response = await aiClient.sendMessage(history);
+        let content = response.output;
+
+        // 尝试提取 JSON
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          content = jsonMatch[0];
+        }
+
+        try {
+          const memoryData = JSON.parse(content);
+          if (memoryData.chat_log && Array.isArray(memoryData.chat_log)) {
+            currentMemory = memoryData;
+            
+            // 默认情绪处理
+            if (!['happy', 'calm', 'sad'].includes(currentMemory.sentiment)) {
+              currentMemory.sentiment = 'calm';
+            }
+
+            // 显示预览
+            previewArea.style.display = 'block';
+            const sentimentMap = { happy: '🌸 愉快', calm: '🌿 平静', sad: '🍂 难过' };
+            const sentimentText = sentimentMap[currentMemory.sentiment] || currentMemory.sentiment;
+            
+            contentArea.innerHTML = `
+              <div style="margin-bottom: 8px; font-weight: bold; color: #555;">情绪基调: ${sentimentText}</div>
+              <hr style="border: 0; border-top: 1px solid #eee; margin: 8px 0;">
+              ${currentMemory.chat_log.map(m => `<strong>${m.sender}:</strong> ${m.message}`).join('<br>')}
+            `;
+            
+            eventBus.emit(Events.STATUS_MESSAGE, { message: '生成成功，请确认保存' });
+          } else {
+            throw new Error('格式错误：缺少 chat_log 数组');
+          }
+        } catch (e) {
+          console.error('JSON Parse Error:', e);
+          alert('生成的内容格式有误，请重试。');
+        }
+
+      } catch (error) {
+        console.error('Generation Error:', error);
+        alert('生成失败：' + error.message);
+      } finally {
+        generateBtn.disabled = false;
+        generateBtn.textContent = '生成聊天记录 (AI)';
+      }
+    });
+  }
+
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async () => {
+      if (currentMemory && dateInput.value) {
+        const dateStr = dateInput.value;
+        const [year, monthStr, dayStr] = dateStr.split('-');
+        
+        // 解析日期对应到 Grid (注意：Grid 是 0-based 索引)
+        // 假设月份直接映射 (0-11)，日期映射到格子索引
+        const month = parseInt(monthStr) - 1;
+        const day = parseInt(dayStr) - 1;
+
+        // 检查日期是否有效 (Grid 每个月有 35 个格子，日期 1-31 都在范围内)
+        if (month >= 0 && month < 12 && day >= 0 && day < 35) {
+          console.log(`[Memory] Saving memory for date: ${dateStr}, mapped to Grid Month: ${month}, Day: ${day}`);
+          
+          // 保存回忆
+          gameState.addMemory(dateStr, currentMemory.chat_log);
+          
+          // 选择花束
+          const possibleBouquets = SENTIMENT_BOUQUETS[currentMemory.sentiment];
+          const randomBouquet = possibleBouquets[Math.floor(Math.random() * possibleBouquets.length)];
+          
+          // 获取用户设置的参数
+          const count = parseInt(countInput?.value) || 3;
+          const scale = parseFloat(sizeInput?.value) || 5.0;
+
+          // DEBUG: 显示目标格子的位置
+          const cellCenter = grid.getCellCenter(month, day);
+          console.log(`[Memory] Target Cell Center:`, cellCenter);
+          
+          // 创建一个临时的红色指示球
+          const debugGeo = new THREE.SphereGeometry(0.2, 16, 16);
+          const debugMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+          const debugSphere = new THREE.Mesh(debugGeo, debugMat);
+          debugSphere.position.set(cellCenter.x, 1.0, cellCenter.z);
+          sceneSetup.scene.add(debugSphere);
+          
+          // 3秒后移除指示球
+          setTimeout(() => sceneSetup.scene.remove(debugSphere), 3000);
+
+          // 强制清空该格子的旧花朵，确保新花能种下
+          const targetCell = grid.getCell(month, day);
+          if (targetCell && !targetCell.isEmpty()) {
+            console.log('[Memory] Clearing existing flowers in cell...');
+            const flowersToRemove = [...targetCell.flowers];
+            flowersToRemove.forEach(f => flowerManager.removeFlower(f));
+          }
+
+          // 检查该花束是否在目录中
+          if (BOUQUET_CATALOG[randomBouquet]) {
+            // 获取用户设置的参数
+            const count = parseInt(countInput?.value) || 3;
+            const scale = parseFloat(sizeInput?.value) || 5.0;
+            
+            await flowerManager.plantBouquetInCell(month, day, randomBouquet, count, scale);
+            eventBus.emit(Events.STATUS_MESSAGE, { message: `已保存回忆并在 ${month+1}月${day+1}日 种下 "${randomBouquet}"` });
+          } else {
+            // 如果找不到对应花束（比如还没加载），尝试用默认的
+            console.warn(`花束 ${randomBouquet} 不存在，尝试使用默认花束`);
+            const fallbackKeys = Object.keys(BOUQUET_CATALOG);
+            if (fallbackKeys.length > 0) {
+              const fallback = fallbackKeys[0];
+              const count = parseInt(countInput?.value) || 3;
+              const scale = parseFloat(sizeInput?.value) || 5.0;
+              
+              await flowerManager.plantBouquetInCell(month, day, fallback, count, scale);
+              eventBus.emit(Events.STATUS_MESSAGE, { message: `已保存回忆并在 ${month+1}月${day+1}日 种下花束` });
+            }
+          }
+
+          // 触发自动保存
+          stateManager.save();
+          
+          previewArea.style.display = 'none';
+          currentMemory = null;
+          promptInput.value = '';
+        } else {
+          alert('日期超出范围，无法种植');
+        }
+      }
+    });
+  }
+
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', () => {
+      previewArea.style.display = 'none';
+      currentMemory = null;
+    });
+  }
 }
 
 // ============================================

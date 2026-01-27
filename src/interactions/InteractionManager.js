@@ -90,9 +90,10 @@ export class InteractionManager {
    * @param {string} entityType - 实体类型
    * @param {Object} entityData - 实体数据
    * @param {Object} position - 交互位置
+   * @param {Object} [context] - 额外上下文
    * @returns {Promise<import('../agent/GardenAgent.js').AgentOutput|null>}
    */
-  async handleDirectInteraction(type, entityType, entityData, position = {}) {
+  async handleDirectInteraction(type, entityType, entityData, position = {}, context = null) {
     // 获取实体描述
     const descriptor = this.entityRegistry.describe(entityType, entityData);
     if (!descriptor) {
@@ -113,13 +114,15 @@ export class InteractionManager {
       entityType,
       entityData,
       descriptor,
-      event
+      event,
+      context
     });
 
     // 发送到 Agent
     return await this.agent.process({
       type: 'interaction',
-      event
+      event,
+      context
     });
   }
 

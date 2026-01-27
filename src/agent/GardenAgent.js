@@ -118,8 +118,28 @@ export class GardenAgent {
         state: event.entity,
         customData: event.descriptor.customData
       });
+      
+      // 构建交互消息
+      let messageContent = event.toAgentInput();
+      
+      // 注入回忆上下文
+      if (input.context && input.context.memory && Array.isArray(input.context.memory)) {
+        try {
+          const memoryContent = input.context.memory
+            .filter(m => m && m.sender && m.message) // 过滤无效条目
+            .map(m => `${m.sender}: ${m.message}`)
+            .join('\n');
+            
+          if (memoryContent) {
+            messageContent += `\n\n【关于这朵花的回忆/背景故事】\n日期：${input.context.date || '未知'}\n记录：\n${memoryContent}\n\n(提示：如果用户询问“那天发生了什么”或“为什么种这朵花”，请根据上述回忆进行生动有趣的回答，扮演好花园精灵的角色。)`;
+          }
+        } catch (e) {
+          console.warn('[GardenAgent] Failed to process memory context:', e);
+        }
+      }
+
       // 添加交互消息
-      this.context.addInteractionMessage(event.toAgentInput(), {
+      this.context.addInteractionMessage(messageContent, {
         interactionType: event.type,
         entityId: event.entity.id
       });

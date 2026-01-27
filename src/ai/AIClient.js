@@ -1,6 +1,6 @@
 /**
  * AI 客户端抽象层
- * 封装与 AI API 的通信
+ * 封装与 AI API 的通信 (OpenAI 兼容格式)
  */
 
 import { CONFIG } from '../config.js';
@@ -13,30 +13,56 @@ export class AIClient {
   }
 
   /**
-   * 发送聊天请求
+   * 发送聊天请求 (兼容 main.js 调用)
+   * @param {Array<{role: string, content: string}>} messages - 完整消息历史
+   * @returns {Promise<{output: string}>}
+   */
+  async sendMessage(messages) {
+    const response = await this.chat(messages);
+    const parsed = this.parseResponse(response);
+    return { output: parsed.text };
+  }
+
+  /**
+   * 发送聊天请求 (底层实现)
    * @param {Object[]} messages - 消息历史
-   * @param {string} systemPrompt - 系统提示
-   * @param {Object[]} tools - 可用工具
+   * @param {string} [systemPrompt] - 可选的系统提示 (如果 messages 中未包含)
+   * @param {Object[]} [tools] - 可用工具
    * @returns {Promise<Object>} API 响应
    */
-  async chat(messages, systemPrompt, tools = []) {
+  async chat(messages, systemPrompt = null, tools = []) {
+    // 构造请求消息列表
+    let requestMessages = [...messages];
+    
+    // 如果提供了 systemPrompt 且 messages 中没有 system 消息，则添加
+    if (systemPrompt && !requestMessages.some(m => m.role === 'system')) {
+      requestMessages.unshift({ role: 'system', content: systemPrompt });
+    }
+
     try {
+      const body = {
+        model: this.model,
+        messages: requestMessages,
+        stream: false
+      };
+
+      // 只有当有工具时才添加 tools 字段
+      if (tools && tools.length > 0) {
+        body.tools = tools;
+      }
+
       const response = await fetch(this.url, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          model: this.model,
-          instructions: systemPrompt,
-          input: messages,
-          tools: tools
-        })
+        body: JSON.stringify(body)
       });
 
       if (!response.ok) {
-        throw new Error(`API请求失败: ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(`API请求失败 (${response.status}): ${errorText}`);
       }
 
       return await response.json();
@@ -48,7 +74,7 @@ export class AIClient {
   }
 
   /**
-   * 解析 API 响应
+   * 解析 API 响应 (OpenAI 格式)
    * @param {Object} data - API 响应数据
    * @returns {{text: string, toolCalls: Object[]}}
    */
@@ -56,76 +82,34 @@ export class AIClient {
     let responseText = '';
     const toolCalls = [];
 
-    if (Array.isArray(data.output)) {
-      for (const item of data.output) {
-        // 处理文本消息
-        if (item.type === 'message') {
-          const content = item.content;
-          if (Array.isArray(content)) {
-            for (const c of content) {
-              if (c.type === 'output_text' || c.type === 'text') {
-                responseText += c.text;
-              }
+    const choice = data.choices?.[0];
+    if (choice && choice.message) {
+      const message = choice.message;
+      
+      // 提取文本内容
+      if (message.content) {
+        responseText = message.content;
+      }
+
+      // 提取工具调用
+      if (message.tool_calls) {
+        message.tool_calls.forEach(call => {
+          if (call.function) {
+            try {
+              toolCalls.push({
+                name: call.function.name,
+                arguments: JSON.parse(call.function.arguments),
+                id: call.id
+              });
+            } catch (e) {
+              console.warn('工具参数解析失败:', e);
             }
           }
-        }
-
-        // 检测工具调用
-        if (item.type === 'function_call' || item.type === 'tool_use') {
-          const toolName = item.name || item.function?.name;
-          const args = typeof item.arguments === 'string'
-            ? JSON.parse(item.arguments)
-            : (item.arguments || item.function?.arguments || {});
-
-          toolCalls.push({
-            name: toolName,
-            arguments: args
-          });
-        }
+        });
       }
     }
 
-    // 解析文本中的 <|FunctionCallBegin|>...<|FunctionCallEnd|> 格式
-    const { cleanText, extractedCalls } = this._extractInlineToolCalls(responseText);
-    responseText = cleanText;
-    toolCalls.push(...extractedCalls);
-
     return { text: responseText, toolCalls };
-  }
-
-  /**
-   * 从文本中提取内联的工具调用
-   * 豆包模型有时会在文本中返回 <|FunctionCallBegin|>...<|FunctionCallEnd|> 格式
-   * @param {string} text - 原始文本
-   * @returns {{cleanText: string, extractedCalls: Object[]}}
-   */
-  _extractInlineToolCalls(text) {
-    const extractedCalls = [];
-    const pattern = /<\|FunctionCallBegin\|>([\s\S]*?)<\|FunctionCallEnd\|>/g;
-
-    let cleanText = text.replace(pattern, (match, jsonStr) => {
-      try {
-        const calls = JSON.parse(jsonStr.trim());
-        const callArray = Array.isArray(calls) ? calls : [calls];
-
-        for (const call of callArray) {
-          if (call.name) {
-            extractedCalls.push({
-              name: call.name,
-              arguments: call.parameters || call.arguments || {}
-            });
-          }
-        }
-      } catch (e) {
-        console.warn('[AIClient] 解析内联工具调用失败:', e.message);
-      }
-      return ''; // 从文本中移除
-    });
-
-    // 清理多余的空白
-    cleanText = cleanText.trim();
-
-    return { cleanText, extractedCalls };
   }
 }
 

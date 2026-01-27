@@ -10,12 +10,12 @@ export const CONFIG = {
     calendarLayout: {
       radius: 10, // 月份网格所在的圆半径
       layoutCols: 3, // 布局列数 (3列 x 4行)
-      monthGap: 0.5, // 月份之间的间距
+      monthGap: 1.0, // 月份之间的间距 (增加间距以适配更大的网格)
       monthGrid: {
         cols: 7,
         rows: 5,
-        cellWidth: 0.25,
-        cellDepth: 0.25
+        cellWidth: 0.5,  // 增大格子宽度 (原 0.25)
+        cellDepth: 0.5   // 增大格子深度 (原 0.25)
       }
     }
   },
@@ -33,7 +33,7 @@ export const CONFIG = {
     backend: 'doubao',
     
     // 豆包 API 配置
-    url: 'https://ark.cn-beijing.volces.com/api/v3/responses',
+    url: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
     token: '2bce5331-d480-4141-b0dc-23f3d7e5e185',
     model: 'doubao-seed-1-8-251228'
   },

@@ -1146,6 +1146,115 @@
       </div>
     </div>
 
+    <!-- 年度批量填充 -->
+    <div class="panel-section">
+      <div class="section-title">年度批量填充</div>
+      <div class="hint" style="margin-bottom: 8px;">一键生成全年的情绪回忆并填满花园</div>
+      
+      <div class="control-group">
+        <label class="control-label">年度主题</label>
+        <input type="text" id="batch-theme" placeholder="例如：充满挑战但收获满满的一年" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+      </div>
+
+      <div class="control-group">
+        <label class="control-label">每月生成数量 (1-10)</label>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <input type="range" id="batch-count" min="1" max="10" step="1" value="3" style="flex: 1; height: 4px;">
+          <span id="batch-count-val" style="font-size: 12px; color: #666; width: 20px; text-align: right;">3</span>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <button class="btn btn-primary" id="generate-batch">生成全年规划 (AI)</button>
+      </div>
+
+      <div id="batch-preview" style="display: none; margin-top: 12px; border: 1px solid #e0e0e0; border-radius: 6px; padding: 12px; background: #f9f9f9;">
+        <div class="section-title" style="font-size: 12px;">全年预览</div>
+        <div id="batch-content" style="max-height: 200px; overflow-y: auto; font-size: 11px; margin-bottom: 12px;"></div>
+        <div class="preview-buttons">
+          <button class="btn btn-secondary" id="cancel-batch">取消</button>
+          <button class="btn btn-primary" id="save-batch">保存并种植</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 地面样式 -->
+    <div class="panel-section">
+      <div class="section-title">地面样式</div>
+      
+      <div class="control-group">
+        <label class="control-label">地面颜色</label>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <input type="color" id="ground-color-picker" value="#FFF6E2" style="width: 40px; height: 32px; padding: 0; border: none; cursor: pointer;">
+          <input type="text" id="ground-color-text" value="#FFF6E2" style="flex: 1; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; font-family: monospace;">
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label class="control-label">推荐色板</label>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <div class="color-preset" data-color="#FFF6E2" style="width: 24px; height: 24px; background: #FFF6E2; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;" title="默认淡黄"></div>
+          <div class="color-preset" data-color="#F5E6D3" style="width: 24px; height: 24px; background: #F5E6D3; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;" title="米色"></div>
+          <div class="color-preset" data-color="#E8F5E9" style="width: 24px; height: 24px; background: #E8F5E9; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;" title="淡绿"></div>
+          <div class="color-preset" data-color="#E3F2FD" style="width: 24px; height: 24px; background: #E3F2FD; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;" title="淡蓝"></div>
+          <div class="color-preset" data-color="#FFF3E0" style="width: 24px; height: 24px; background: #FFF3E0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;" title="暖橙"></div>
+          <div class="color-preset" data-color="#F3E5F5" style="width: 24px; height: 24px; background: #F3E5F5; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;" title="淡紫"></div>
+          <div class="color-preset" data-color="#8D6E63" style="width: 24px; height: 24px; background: #8D6E63; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;" title="土壤"></div>
+          <div class="color-preset" data-color="#222222" style="width: 24px; height: 24px; background: #222222; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;" title="暗黑"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 剧情回忆生成 -->
+    <div class="panel-section">
+      <div class="section-title">剧情回忆植入</div>
+      <div class="hint" style="margin-bottom: 8px;">基于设定生成指定日期的聊天记录并存入花园</div>
+      
+      <div class="control-group">
+        <label class="control-label">选择日期</label>
+        <input type="date" id="memory-date" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+      </div>
+
+      <div class="control-group">
+        <label class="control-label">剧情/人设设定</label>
+        <textarea id="memory-prompt" placeholder="例如：
+A是花店老板，B是常客。
+今天是七夕节，B来买花送给暗恋对象，但是很害羞。
+对话风格轻松温馨。" style="width: 100%; height: 80px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical; font-size: 12px;"></textarea>
+      </div>
+
+      <!-- 新增：花束参数调节 -->
+      <div class="control-group">
+        <label class="control-label">生成设置</label>
+        
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+          <span style="font-size: 12px; color: #666; width: 40px;">大小:</span>
+          <input type="range" id="memory-flower-size" min="1" max="10" step="0.5" value="5" style="flex: 1; height: 4px;">
+          <span id="memory-flower-size-val" style="font-size: 12px; color: #666; width: 30px; text-align: right;">5.0</span>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 12px; color: #666; width: 40px;">数量:</span>
+          <input type="range" id="memory-flower-count" min="1" max="10" step="1" value="3" style="flex: 1; height: 4px;">
+          <span id="memory-flower-count-val" style="font-size: 12px; color: #666; width: 30px; text-align: right;">3</span>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <button class="btn btn-primary" id="generate-memory">生成聊天记录 (AI)</button>
+      </div>
+
+      <!-- 生成结果预览 -->
+      <div id="memory-preview" style="display: none; margin-top: 12px; border: 1px solid #e0e0e0; border-radius: 6px; padding: 12px; background: #f9f9f9;">
+        <div class="section-title" style="font-size: 12px;">预览</div>
+        <div id="memory-content" style="max-height: 200px; overflow-y: auto; font-size: 12px; line-height: 1.5; color: #333; margin-bottom: 12px; white-space: pre-wrap;"></div>
+        <div class="preview-buttons">
+          <button class="btn btn-secondary" id="cancel-memory">取消</button>
+          <button class="btn btn-primary" id="save-memory">保存到日期</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 草皮列表 -->
     <div class="panel-section">
       <div class="section-title">草皮列表</div>

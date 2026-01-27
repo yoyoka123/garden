@@ -40,9 +40,10 @@ export class FlowerManager {
    * @param {number} row - 所属格子行
    * @param {string} bouquetKey - 花束类型
    * @param {number|null} fixedRotation - 固定旋转角度
+   * @param {number} scaleMultiplier - 大小缩放倍率
    * @returns {Promise<Object>} 花朵数据
    */
-  async createFlower(position, textureUrl, col, row, bouquetKey, fixedRotation = null) {
+  async createFlower(position, textureUrl, col, row, bouquetKey, fixedRotation = null, scaleMultiplier = 1.0) {
     let texture = await resources.loadTexture(textureUrl);
 
     // 处理透明度
@@ -61,7 +62,9 @@ export class FlowerManager {
     sprite.center.set(0.5, 0);
 
     // 随机大小（缩小以适配草地比例）
-    const scale = 0.15 + Math.random() * 0.15;
+    const baseScale = 0.15 + Math.random() * 0.15;
+    const scale = baseScale * scaleMultiplier;
+    
     sprite.scale.set(scale, scale * 1.5, 1);
 
     // 位置
@@ -103,9 +106,10 @@ export class FlowerManager {
    * @param {number} day - 日期索引
    * @param {string} bouquetKey - 花束键名
    * @param {number} count - 数量
+   * @param {number} scale - 大小缩放倍率
    * @returns {Promise<Object[]>}
    */
-  async plantBouquetInCell(month, day, bouquetKey, count = 1) {
+  async plantBouquetInCell(month, day, bouquetKey, count = 1, scale = 1.0) {
     const cell = this.grid.getCell(month, day);
     if (!cell || !cell.isEmpty()) {
       eventBus.emit(Events.STATUS_MESSAGE, { message: '该格子已种植！' });
@@ -148,7 +152,7 @@ export class FlowerManager {
       // 树木不需要旋转，花朵可以随机旋转
       const flowerRotation = isTree ? 0 : (Math.random() - 0.5) * 0.5;
 
-      const flower = await this.createFlower(position, imgUrl, month, day, bouquetKey, flowerRotation);
+      const flower = await this.createFlower(position, imgUrl, month, day, bouquetKey, flowerRotation, scale);
       plantedFlowers.push(flower);
     }
 

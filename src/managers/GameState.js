@@ -24,9 +24,31 @@ export class GameState {
     this.plantedCount = 0;
     this.gold = 0;
 
+    // 剧情回忆 (Chat Logs)
+    // 格式: { '2026-01-01': [{ sender: 'A', message: 'Hi' }, ...] }
+    this.memories = {};
+
     // 加载状态
     this.loadingCount = 0;
     this.loadedCount = 0;
+  }
+
+  /**
+   * 添加或更新指定日期的回忆
+   * @param {string} date - 日期字符串 YYYY-MM-DD
+   * @param {Array} content - 聊天记录数组
+   */
+  addMemory(date, content) {
+    this.memories[date] = content;
+    eventBus.emit(Events.STATUS_MESSAGE, { message: `已保存 ${date} 的回忆` });
+  }
+
+  /**
+   * 获取指定日期的回忆
+   * @param {string} date 
+   */
+  getMemory(date) {
+    return this.memories[date];
   }
 
   /**
@@ -88,7 +110,8 @@ export class GameState {
       randomRotation: this.randomRotation,
       gardenRotate: this.gardenRotate,
       plantedCount: this.plantedCount,
-      gold: this.gold
+      gold: this.gold,
+      memories: this.memories
     };
   }
 }

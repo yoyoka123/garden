@@ -410,6 +410,16 @@ export class SceneSetup {
   }
 
   /**
+   * 设置地面颜色
+   * @param {string} color - 十六进制颜色字符串
+   */
+  setGroundColor(color) {
+    if (this.groundPlane && this.groundPlane.material) {
+      this.groundPlane.material.color.set(color);
+    }
+  }
+
+  /**
    * 获取渲染器 DOM 元素
    */
   get domElement() {

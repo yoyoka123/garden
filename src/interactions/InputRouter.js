@@ -71,9 +71,10 @@ export class InputRouter {
    * @param {string} entityType
    * @param {Object} entityData
    * @param {Object} position
+   * @param {Object} [context] - 额外上下文 (如回忆)
    * @returns {Promise<{output: import('../agent/GardenAgent.js').AgentOutput, descriptor: Object}|null>}
    */
-  async handleDirectInteraction(type, entityType, entityData, position) {
+  async handleDirectInteraction(type, entityType, entityData, position, context = null) {
     // 先获取描述器，供 ChatUI 使用
     const descriptor = this.interactionManager.entityRegistry.describe(entityType, entityData);
     if (!descriptor) {
@@ -81,7 +82,7 @@ export class InputRouter {
     }
 
     const output = await this.interactionManager.handleDirectInteraction(
-      type, entityType, entityData, position
+      type, entityType, entityData, position, context
     );
 
     if (output) {
