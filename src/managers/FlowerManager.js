@@ -98,15 +98,15 @@ export class FlowerManager {
   }
 
   /**
-   * 在格子中种植一簇花朵
-   * @param {number} col - 列索引
-   * @param {number} row - 行索引
-   * @param {string} bouquetKey - 花束类型
-   * @param {number} count - 花朵数量
-   * @returns {Promise<Object[]>} 种植的花朵数组
+   * 在格子内种植一束花
+   * @param {number} month - 月份索引
+   * @param {number} day - 日期索引
+   * @param {string} bouquetKey - 花束键名
+   * @param {number} count - 数量
+   * @returns {Promise<Object[]>}
    */
-  async plantBouquetInCell(col, row, bouquetKey, count) {
-    const cell = this.grid.getCell(col, row);
+  async plantBouquetInCell(month, day, bouquetKey, count = 1) {
+    const cell = this.grid.getCell(month, day);
     if (!cell || !cell.isEmpty()) {
       eventBus.emit(Events.STATUS_MESSAGE, { message: '该格子已种植！' });
       return [];
@@ -121,29 +121,39 @@ export class FlowerManager {
     // 标记格子为已种植
     cell.plant();
 
-    // 获取格子中心
-    const center = this.grid.getCellCenter(col, row);
-    const centerPos = new THREE.Vector3(center.x, 0, center.z);
+    // 获取格子中心和参数
+    const center = this.grid.getCellCenter(month, day);
+    const cw = this.grid.monthGrid.cellWidth;
+    const cd = this.grid.monthGrid.cellDepth;
+    
+    // (已移除过时的旋转逻辑)
 
     const plantedFlowers = [];
-    const spreadAngle = CONFIG.game.bouquetSpreadAngle;
-
-    // 所有花根部在同一点，朝向不同
+    const isTree = bouquetKey.includes('树') || bouquetKey.includes('tree');
+    
     for (let i = 0; i < count; i++) {
-      const pos = centerPos.clone();
       const imgUrl = images[Math.floor(Math.random() * images.length)];
+      
+      // 随机偏移 (局部坐标)
+      // 留一点边距
+      const localX = (Math.random() - 0.5) * cw * 0.8;
+      const localZ = (Math.random() - 0.5) * cd * 0.8;
+      
+      // 直接在中心坐标上应用偏移 (新网格是轴对齐的)
+      const x = center.x + localX;
+      const z = center.z + localZ;
 
-      // 计算旋转角度
-      const angle = (i / count - 0.5) * Math.PI * spreadAngle;
-      const randomOffset = (Math.random() - 0.5) * 0.1;
-      const rotation = angle + randomOffset;
+      const position = new THREE.Vector3(x, 0, z);
+      
+      // 树木不需要旋转，花朵可以随机旋转
+      const flowerRotation = isTree ? 0 : (Math.random() - 0.5) * 0.5;
 
-      const flower = await this.createFlower(pos, imgUrl, col, row, bouquetKey, rotation);
+      const flower = await this.createFlower(position, imgUrl, month, day, bouquetKey, flowerRotation);
       plantedFlowers.push(flower);
     }
 
     eventBus.emit(Events.STATUS_MESSAGE, {
-      message: `在格子 (${col + 1}, ${row + 1}) 种植成功！`
+      message: `在格子 (${month + 1}月, ${day + 1}日) 种植成功！`
     });
 
     return plantedFlowers;

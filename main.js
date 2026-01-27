@@ -36,6 +36,7 @@ import { stateManager } from './src/persistence/StateManager.js';
 import { interactionQueue } from './src/interactions/InteractionQueue.js';
 import { motionController } from './src/motion/MotionController.js';
 import { throttle } from './src/utils/timing.js';
+import { logger } from './src/utils/Logger.js';
 
 // ============================================
 // 花束目录（花朵 + 树木）
@@ -802,7 +803,8 @@ function setupGrassUpload() {
       }
 
       const count = parseInt(countInput?.value) || 1;
-      GRASS_CATALOG[name] = { url: pendingData, countPerCell: count };
+      // 默认为 1.0 大小
+      GRASS_CATALOG[name] = { url: pendingData, countPerCell: count, scale: 1.0 };
       updateGrassUI();
 
       // 重新加载草地
@@ -823,7 +825,8 @@ async function reloadGrass() {
   // 从 GRASS_CATALOG 构建草纹理数组
   const grassTextures = Object.values(GRASS_CATALOG).map(g => ({
     url: g.url,
-    count: g.countPerCell
+    count: g.countPerCell,
+    scale: g.scale !== undefined ? g.scale : 1.0 // 传递 scale
   }));
   await sceneSetup.reloadGrass(grassTextures, grid);
 }
@@ -1031,31 +1034,49 @@ function updateGrassUI() {
   list.innerHTML = '';
   keys.forEach(key => {
     const grass = GRASS_CATALOG[key];
+    // 确保有 scale 属性
+    if (grass.scale === undefined) grass.scale = 1.0;
+
     const item = document.createElement('div');
     item.className = 'ground-texture-item';
     item.dataset.key = key;
+    item.style.flexWrap = 'wrap'; // 允许换行以容纳控制器
+
+    // 顶部：图标 + 名称
+    const topRow = document.createElement('div');
+    topRow.style.cssText = 'display: flex; align-items: center; width: 100%; margin-bottom: 8px;';
 
     const thumb = document.createElement('div');
     thumb.className = 'ground-texture-thumb';
     if (grass.url) thumb.style.backgroundImage = `url(${grass.url})`;
-    item.appendChild(thumb);
+    topRow.appendChild(thumb);
 
     const name = document.createElement('span');
     name.className = 'ground-texture-name';
     name.textContent = key;
     name.style.flex = '1';
-    item.appendChild(name);
+    topRow.appendChild(name);
 
-    // 数量控制
+    item.appendChild(topRow);
+
+    // 控制区
+    const controlsRow = document.createElement('div');
+    controlsRow.style.cssText = 'display: flex; width: 100%; gap: 12px; font-size: 12px; color: #666;';
+
+    // 1. 数量控制
     const countWrapper = document.createElement('div');
-    countWrapper.style.cssText = 'display: flex; align-items: center; gap: 4px;';
-
+    countWrapper.style.cssText = 'display: flex; align-items: center; gap: 4px; flex: 1;';
+    
+    const countLabel = document.createElement('span');
+    countLabel.textContent = '数量:';
+    
     const countInput = document.createElement('input');
     countInput.type = 'number';
     countInput.min = '0';
-    countInput.max = '10';
+    countInput.max = '20';
     countInput.value = grass.countPerCell;
     countInput.style.cssText = 'width: 40px; padding: 2px 4px; font-size: 12px; border: 1px solid #ddd; border-radius: 4px;';
+    
     countInput.addEventListener('change', async (e) => {
       e.stopPropagation();
       const newCount = parseInt(countInput.value) || 0;
@@ -1064,13 +1085,48 @@ function updateGrassUI() {
     });
     countInput.addEventListener('click', (e) => e.stopPropagation());
 
-    const countLabel = document.createElement('span');
-    countLabel.textContent = '/格';
-    countLabel.style.cssText = 'font-size: 11px; color: #999;';
-
-    countWrapper.appendChild(countInput);
     countWrapper.appendChild(countLabel);
-    item.appendChild(countWrapper);
+    countWrapper.appendChild(countInput);
+
+    // 2. 大小控制
+    const scaleWrapper = document.createElement('div');
+    scaleWrapper.style.cssText = 'display: flex; align-items: center; gap: 4px; flex: 1.5;';
+    
+    const scaleLabel = document.createElement('span');
+    scaleLabel.textContent = '大小:';
+    
+    const scaleInput = document.createElement('input');
+    scaleInput.type = 'range';
+    scaleInput.min = '0.5';
+    scaleInput.max = '3.0';
+    scaleInput.step = '0.1';
+    scaleInput.value = grass.scale;
+    scaleInput.style.cssText = 'flex: 1; height: 4px; cursor: pointer;';
+    
+    const scaleValue = document.createElement('span');
+    scaleValue.textContent = grass.scale.toFixed(1);
+    scaleValue.style.width = '24px';
+    scaleValue.style.textAlign = 'right';
+
+    scaleInput.addEventListener('input', (e) => {
+      scaleValue.textContent = parseFloat(e.target.value).toFixed(1);
+    });
+
+    scaleInput.addEventListener('change', async (e) => {
+      e.stopPropagation();
+      const newScale = parseFloat(scaleInput.value);
+      GRASS_CATALOG[key].scale = newScale;
+      await reloadGrass();
+    });
+    scaleInput.addEventListener('click', (e) => e.stopPropagation());
+
+    scaleWrapper.appendChild(scaleLabel);
+    scaleWrapper.appendChild(scaleInput);
+    scaleWrapper.appendChild(scaleValue);
+
+    controlsRow.appendChild(countWrapper);
+    controlsRow.appendChild(scaleWrapper);
+    item.appendChild(controlsRow);
 
     list.appendChild(item);
   });
@@ -1116,7 +1172,13 @@ window.addEventListener('resize', () => sceneSetup.onResize());
 // 初始化
 // ============================================
 async function init() {
+  logger.info('App', 'Initializing Garden...', {
+    url: window.location.href,
+    userAgent: navigator.userAgent
+  });
+
   // 加载默认天空
+  logger.info('App', 'Loading sky background...', { url: CONFIG.assets.sky });
   await sceneSetup.loadSkyBackground(CONFIG.assets.sky);
 
   // 初始化 3D 草地（从 GRASS_CATALOG 加载）
@@ -1189,8 +1251,12 @@ async function init() {
     getSnapshot: () => stateProvider.getSnapshot()
   };
 
+  logger.info('App', 'Garden initialized successfully');
   console.log('🌻 语义农场已启动');
   console.log('💡 调试: 在控制台使用 window.garden 访问调试工具');
+  console.log('📝 日志系统已启动，使用 window.gardenLogger 访问');
+  console.log('📥 导出日志: window.gardenLogger.downloadLogs()');
+  console.log('📊 查看统计: window.gardenLogger.getStats()');
 }
 
 init();

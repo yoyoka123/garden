@@ -45,18 +45,15 @@ export class SceneSetup {
 
     // 创建地面（用于射线检测，不可见）
     // 使用默认尺寸初始化，后续可以通过 updateGardenSize 更新
-    const defaultWidth = CONFIG.grid.cols * CONFIG.grid.cellWidth;
-    const defaultDepth = CONFIG.grid.rows * CONFIG.grid.cellDepth;
-    this.groundPlane = this.createGround(defaultWidth, defaultDepth);
+    this.groundPlane = this.createGround();
     
     // 创建临时网格对象用于初始化
     const tempGrid = {
-      cols: CONFIG.grid.cols,
-      rows: CONFIG.grid.rows,
-      cellWidth: CONFIG.grid.cellWidth,
-      cellDepth: CONFIG.grid.cellDepth,
-      width: defaultWidth,
-      depth: defaultDepth
+      months: CONFIG.grid.months,
+      radius: CONFIG.grid.calendarLayout.radius,
+      monthGrid: CONFIG.grid.calendarLayout.monthGrid,
+      layoutCols: CONFIG.grid.calendarLayout.layoutCols || 3,
+      monthGap: CONFIG.grid.calendarLayout.monthGap || 0.5
     };
     this.dashedGrid = this.createDashedGrid(tempGrid);
 
@@ -156,65 +153,160 @@ export class SceneSetup {
 
   /**
    * 创建地面（用于射线检测，不可见）
-   * @param {number} width - 花园宽度
-   * @param {number} depth - 花园深度
    */
-  createGround(width, depth) {
-    const geometry = new THREE.PlaneGeometry(width, depth);
+  createGround() {
+    const layout = CONFIG.grid.calendarLayout;
+    // 地面半径需要覆盖整个日历环
+    const groundRadius = layout.radius + 5;
+    
+    const geometry = new THREE.CircleGeometry(groundRadius, 64);
+    
+    // 旋转到水平面
+    geometry.rotateX(-Math.PI / 2);
+
     const material = new THREE.MeshBasicMaterial({
-      color: 0x8B6914,
-      transparent: true,
-      opacity: 0.3  // 半透明土地底色
+      color: 0xFFF6E2, // 用户指定的淡黄色
+      transparent: false,
+      side: THREE.DoubleSide
     });
 
     const plane = new THREE.Mesh(geometry, material);
-    plane.rotation.x = -Math.PI / 2;
-    plane.position.y = GROUND_Y - 0.02;  // 稍低于草地
+    plane.position.y = GROUND_Y - 0.02; // 稍低于草地
 
     this.groundGroup.add(plane);
     return plane;
   }
 
   /**
-   * 创建虚线网格
+   * 创建虚线网格 (日历布局)
    * @param {Object} grid - 网格对象
    */
   createDashedGrid(grid) {
     const gridGroup = new THREE.Group();
     const material = createDashedMaterial();
 
-    const { cols, rows, cellWidth, cellDepth } = grid;
-    const width = grid.width;
-    const depth = grid.depth;
+    const { months, monthGrid } = grid;
+    const { cols, rows, cellWidth, cellDepth } = monthGrid;
+    
+    // 兼容 tempGrid 和真实 Grid 实例
+    const layoutCols = grid.layoutCols || CONFIG.grid.calendarLayout.layoutCols || 3;
+    const monthGap = grid.monthGap || CONFIG.grid.calendarLayout.monthGap || 0.5;
+    
+    // 物理尺寸
+    const monthWidth = cols * cellWidth;
+    const monthDepth = rows * cellDepth;
+    
+    const layoutRows = Math.ceil(months / layoutCols);
+    const totalWidth = layoutCols * monthWidth + (layoutCols - 1) * monthGap;
+    const totalDepth = layoutRows * monthDepth + (layoutRows - 1) * monthGap;
+    
+    // 起始点 (左上角)
+    const startX = -totalWidth / 2;
+    const startZ = -totalDepth / 2;
 
-    // 垂直线
-    for (let i = 1; i < cols; i++) {
-      const x = -width / 2 + i * cellWidth;
-      const points = [
-        new THREE.Vector3(x, 0.01, -depth / 2),
-        new THREE.Vector3(x, 0.01, depth / 2)
-      ];
-      const geometry = new THREE.BufferGeometry().setFromPoints(points);
-      const line = new THREE.Line(geometry, material);
-      line.computeLineDistances();
-      gridGroup.add(line);
-    }
+    // 遍历每个月份绘制网格
+    for (let m = 0; m < months; m++) {
+      const col = m % layoutCols;
+      const row = Math.floor(m / layoutCols);
+      
+      // 当前月份块的左上角
+      const monthX = startX + col * (monthWidth + monthGap);
+      const monthZ = startZ + row * (monthDepth + monthGap);
+      
+      // 中心点
+      const monthCenterX = monthX + monthWidth / 2;
+      const monthCenterZ = monthZ + monthDepth / 2;
 
-    // 水平线
-    for (let i = 1; i < rows; i++) {
-      const z = -depth / 2 + i * cellDepth;
-      const points = [
-        new THREE.Vector3(-width / 2, 0.01, z),
-        new THREE.Vector3(width / 2, 0.01, z)
-      ];
-      const geometry = new THREE.BufferGeometry().setFromPoints(points);
-      const line = new THREE.Line(geometry, material);
-      line.computeLineDistances();
-      gridGroup.add(line);
+      // 辅助函数：局部到世界 (无旋转，直接平移)
+      const transform = (x, z) => {
+        return new THREE.Vector3(
+          monthCenterX + x,
+          0.01,
+          monthCenterZ + z
+        );
+      };
+
+      // 绘制垂直线 (Cols)
+      for (let i = 0; i <= cols; i++) {
+        const x = (i - cols / 2) * cellWidth;
+        const zStart = -rows * cellDepth / 2;
+        const zEnd = rows * cellDepth / 2;
+        
+        const p1 = transform(x, zStart);
+        const p2 = transform(x, zEnd);
+        
+        const geometry = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+        const line = new THREE.Line(geometry, material);
+        line.computeLineDistances();
+        gridGroup.add(line);
+      }
+
+      // 绘制水平线 (Rows)
+      for (let i = 0; i <= rows; i++) {
+        const z = (i - rows / 2) * cellDepth;
+        const xStart = -cols * cellWidth / 2;
+        const xEnd = cols * cellWidth / 2;
+        
+        const p1 = transform(xStart, z);
+        const p2 = transform(xEnd, z);
+        
+        const geometry = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+        const line = new THREE.Line(geometry, material);
+        line.computeLineDistances();
+        gridGroup.add(line);
+      }
+      
+      // 添加月份标签
+      this.createMonthLabel(m, monthCenterX, monthCenterZ - monthDepth/2 - 0.2, gridGroup);
     }
 
     this.scene.add(gridGroup);
     return gridGroup;
+  }
+  
+  /**
+   * 创建月份标签
+   */
+  createMonthLabel(monthIndex, x, z, group) {
+    const year = 2026;
+    const month = monthIndex + 1;
+    const monthNames = ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"];
+    const text = `${year}.${month.toString().padStart(2, '0')} ${monthNames[monthIndex]}`;
+    
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const fontSize = 48;
+    ctx.font = `bold ${fontSize}px "Microsoft YaHei", Arial, sans-serif`;
+    
+    // Measure text
+    const textMetrics = ctx.measureText(text);
+    const textWidth = textMetrics.width;
+    const textHeight = fontSize * 1.4;
+    
+    canvas.width = textWidth + 20;
+    canvas.height = textHeight + 20;
+    
+    // Redraw
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.font = `bold ${fontSize}px "Microsoft YaHei", Arial, sans-serif`;
+    ctx.fillStyle = '#555555'; // 深灰色文字
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.minFilter = THREE.LinearFilter;
+    
+    const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+    const sprite = new THREE.Sprite(material);
+    
+    // Scale sprite
+    const scale = 1.0; 
+    sprite.scale.set(scale, scale * (canvas.height / canvas.width), 1);
+    
+    sprite.position.set(x, 0.5, z);
+    
+    group.add(sprite);
   }
 
   /**
@@ -222,16 +314,13 @@ export class SceneSetup {
    * @param {Object} grid - 网格对象
    */
   updateGardenSize(grid) {
-    const width = grid.width;
-    const depth = grid.depth;
-
     // 更新地面
     if (this.groundPlane) {
       this.groundGroup.remove(this.groundPlane);
       this.groundPlane.geometry.dispose();
       this.groundPlane.material.dispose();
     }
-    this.groundPlane = this.createGround(width, depth);
+    this.groundPlane = this.createGround();
 
     // 更新网格
     if (this.dashedGrid) {

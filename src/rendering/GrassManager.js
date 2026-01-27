@@ -25,7 +25,7 @@ export class GrassManager {
 
   /**
    * 从草皮目录初始化草地
-   * @param {Array<{url: string, count: number}>} grassTypes - 草类型数组
+   * @param {Array<{url: string, count: number, scale: number}>} grassTypes - 草类型数组
    * @param {Object} grid - 网格对象
    */
   async initFromCatalog(grassTypes, grid) {
@@ -38,46 +38,49 @@ export class GrassManager {
       if (grass.count > 0) {
         let texture = await resources.loadTexture(grass.url);
         texture = processTextureForTransparency(texture);
-        textures.push({ texture, count: grass.count });
+        // 传递 scale 参数，默认为 1.0
+        textures.push({ 
+          texture, 
+          count: grass.count,
+          scale: grass.scale || 1.0 
+        });
       }
     }
 
-    // 使用传入的 grid 对象获取尺寸信息
-    const cols = grid.cols;
-    const rows = grid.rows;
-    const cellWidth = grid.cellWidth;
-    const cellDepth = grid.cellDepth;
+    // 遍历所有格子
+    grid.forEach((cell, month, day) => {
+      const center = grid.getCellCenter(month, day);
 
-    // 遍历每个格子
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        const center = grid.getCellCenter(col, row);
-
-        // 放置每种草
-        for (const { texture, count } of textures) {
-          for (let i = 0; i < count; i++) {
-            this.createGrassInCell(texture, center, cellWidth, cellDepth);
-          }
+      // 放置每种草
+      for (const { texture, count, scale } of textures) {
+        for (let i = 0; i < count; i++) {
+          this.createGrassInCell(texture, center, month, grid, scale);
         }
       }
-    }
+    });
   }
 
   /**
    * 在格子范围内创建草
    * @param {THREE.Texture} texture - 纹理
    * @param {Object} center - 格子中心 {x, z}
-   * @param {number} cellWidth - 格子宽度
-   * @param {number} cellDepth - 格子深度
+   * @param {number} month - 月份索引
+   * @param {Object} grid - 网格对象
+   * @param {number} scaleMultiplier - 大小缩放倍率
    */
-  createGrassInCell(texture, center, cellWidth, cellDepth) {
-    // 在格子范围内随机偏移
-    const offsetX = (Math.random() - 0.5) * cellWidth * 0.8;
-    const offsetZ = (Math.random() - 0.5) * cellDepth * 0.8;
-    const x = center.x + offsetX;
-    const z = center.z + offsetZ;
+  createGrassInCell(texture, center, month, grid, scaleMultiplier = 1.0) {
+    // 随机偏移 (局部坐标)
+    const cw = grid.monthGrid.cellWidth;
+    const cd = grid.monthGrid.cellDepth;
+    
+    const localX = (Math.random() - 0.5) * cw;
+    const localZ = (Math.random() - 0.5) * cd;
+    
+    // 直接在中心坐标上应用偏移 (新网格是轴对齐的)
+    const x = center.x + localX;
+    const z = center.z + localZ;
 
-    this.createGrass(texture, x, z);
+    this.createGrass(texture, x, z, scaleMultiplier);
   }
 
   /**
@@ -85,8 +88,9 @@ export class GrassManager {
    * @param {THREE.Texture} texture - 纹理
    * @param {number} x - X 坐标
    * @param {number} z - Z 坐标
+   * @param {number} scaleMultiplier - 大小缩放倍率
    */
-  createGrass(texture, x, z) {
+  createGrass(texture, x, z, scaleMultiplier = 1.0) {
     const material = new THREE.SpriteMaterial({
       map: texture,
       transparent: true,
@@ -100,9 +104,11 @@ export class GrassManager {
     // 底部为轴点
     sprite.center.set(0.5, 0);
 
-    // 随机大小
-    const scale = this.config.minScale + Math.random() * (this.config.maxScale - this.config.minScale);
-    sprite.scale.set(scale, scale * 1.2, 1);
+    // 随机大小，并应用缩放倍率
+    const baseScale = this.config.minScale + Math.random() * (this.config.maxScale - this.config.minScale);
+    const finalScale = baseScale * scaleMultiplier;
+    
+    sprite.scale.set(finalScale, finalScale * 1.2, 1);
 
     // 位置（草稍微低于花朵）
     sprite.position.set(x, GROUND_Y - 0.01, z);
@@ -115,7 +121,7 @@ export class GrassManager {
       sprite,
       phaseOffset: Math.random() * Math.PI * 2,
       baseRotation: (Math.random() - 0.5) * 0.3,
-      originalScale: scale
+      originalScale: finalScale
     };
 
     this.grasses.push(grassData);

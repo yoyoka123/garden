@@ -4,12 +4,20 @@
  */
 
 export const CONFIG = {
-  // 网格配置
+  // 网格配置 (日历布局)
   grid: {
-    cols: 3,
-    rows: 2,
-    cellWidth: 0.6,   // 缩小到约 1/10 面积
-    cellDepth: 0.6
+    months: 12,
+    calendarLayout: {
+      radius: 10, // 月份网格所在的圆半径
+      layoutCols: 3, // 布局列数 (3列 x 4行)
+      monthGap: 0.5, // 月份之间的间距
+      monthGrid: {
+        cols: 7,
+        rows: 5,
+        cellWidth: 0.25,
+        cellDepth: 0.25
+      }
+    }
   },
 
   // 游戏配置
@@ -22,8 +30,8 @@ export const CONFIG = {
   // AI API 配置
   ai: {
     // 后端选择: 'doubao' | 'claude-code'
-    backend: 'claude-code',
-
+    backend: 'doubao',
+    
     // 豆包 API 配置
     url: 'https://ark.cn-beijing.volces.com/api/v3/responses',
     token: '2bce5331-d480-4141-b0dc-23f3d7e5e185',
@@ -88,6 +96,7 @@ export const CONFIG = {
 };
 
 // 计算派生值
-export const GARDEN_WIDTH = CONFIG.grid.cols * CONFIG.grid.cellWidth;
-export const GARDEN_DEPTH = CONFIG.grid.rows * CONFIG.grid.cellDepth;
+// 对于圆形布局，使用直径作为参考宽高
+export const GARDEN_WIDTH = CONFIG.grid.calendarLayout.radius * 2 + 5; 
+export const GARDEN_DEPTH = CONFIG.grid.calendarLayout.radius * 2 + 5;
 export const GROUND_Y = 0;

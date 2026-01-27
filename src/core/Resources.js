@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { eventBus, Events } from '../EventBus.js';
 import { createPlaceholderTexture } from '../utils/three-helpers.js';
+import { logger } from '../utils/Logger.js';
 
 export class ResourceManager {
   constructor() {
@@ -26,27 +27,32 @@ export class ResourceManager {
   async loadTexture(url) {
     // 检查缓存
     if (this.textureCache.has(url)) {
+      logger.debug('Resource', `Texture from cache: ${url}`);
       return this.textureCache.get(url);
     }
 
     this.loadingCount++;
     this.emitLoadingStatus();
+    const startTime = Date.now();
 
     return new Promise((resolve) => {
       this.textureLoader.load(
         url,
         (texture) => {
+          const duration = Date.now() - startTime;
           texture.colorSpace = THREE.SRGBColorSpace;
           this.textureCache.set(url, texture);
           this.loadedCount++;
           this.emitLoadingStatus();
+          logger.logResourceLoad(url, true, null, duration);
           resolve(texture);
         },
         undefined,
         (error) => {
-          console.warn('加载纹理失败:', url, error);
+          const duration = Date.now() - startTime;
           this.loadedCount++;
           this.emitLoadingStatus();
+          logger.logResourceLoad(url, false, error, duration);
           resolve(this.placeholderTexture);
         }
       );
